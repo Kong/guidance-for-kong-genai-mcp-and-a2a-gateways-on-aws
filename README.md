@@ -41,9 +41,9 @@ The following outlines the reference implementation architecture for deploying t
 1. LLM Integrations: * Kong integrates natively with Amazon Bedrock to seamlessly handle prompt translation, model access, and routing to models like Amazon Nova or Anthropic Claude.
 Pre-existing configurations easily route secondary traffic to third-party providers (OpenAI, Vertex AI) using native Kong AI plugins.
 1. AWS Services Integration:
-* Amazon ElastiCache (Redis): Acts as the high-speed backend for Kong's AI Semantic Caching, enabling multi-tenant prompt caching to optimize costs.
-* AWS Secrets Manager: Securely stores Kong Konnect control plane certificates, external model provider credentials, and sensitive configurations.
-* Amazon S3 & CloudWatch: Kong Data Planes and the Control Plane stream robust API and AI metrics (token usage, latency, error rates) to CloudWatch and persistent logs to Amazon S3.
+    * Amazon ElastiCache (Redis): Acts as the high-speed backend for Kong's AI Semantic Caching, enabling multi-tenant prompt caching to optimize costs.
+    * AWS Secrets Manager: Securely stores Kong Konnect control plane certificates, external model provider credentials, and sensitive configurations.
+    * Amazon S3 & CloudWatch: Kong Data Planes and the Control Plane stream robust API and AI metrics (token usage, latency, error rates) to CloudWatch and persistent logs to Amazon S3.
 
 Plan Your Deployment
 You can customize how your Kong AI Gateway is deployed and accessed based on specific network topologies and compliance requirements.
