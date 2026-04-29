@@ -78,7 +78,6 @@ Before deploying, ensure you have an active Kong Konnect account. If you do not 
 - If using Amazon EKS, install kubectl
 
 ### Deployment Steps
-
 1. Clone the Repository and navigate to the deployment directory.
 2. Configure Kong Konnect Secrets: Generate a Data Plane certificate from your Kong Konnect control plane and store the Telemetry/Control Plane endpoints in AWS Secrets Manager.
 3. Set Environment Variables: Configure your .env file for your selected orchestrator (DEPLOYMENT_PLATFORM="EKS" or "ECS").
@@ -90,11 +89,10 @@ terraform apply
 5. Time to deploy: Approximately 30-40 minutes.
 
 
-Example: Consuming Amazon Bedrock through Kong AI Gateway
+### Example: Consuming Amazon Bedrock through Kong AI Gateway
 Once deployed, your applications no longer need to manage complex LLM SDKs or AWS SigV4 signing directly for every service. Kong handles the heavy lifting. You can communicate with Amazon Bedrock via a standard unified HTTP request:
-Python
 
-
+```python
 import os
 import requests
 
@@ -119,15 +117,15 @@ payload = {
 response = requests.post(KONG_ENDPOINT, headers=headers, json=payload)
 
 print(response.json())
+```
 
-
-Implementing AI Cost Optimization
+### Implementing AI Cost Optimization
 To activate AI Semantic Caching:
-Log into your Kong Konnect Control Plane.
-Select your AI Gateway Service.
-Add the AI Semantic Cache plugin.
-Point the configuration to your deployed Amazon ElastiCache (Redis) instance URL.
-Define the similarity threshold (e.g., 0.95). Any future LLM requests that hit this semantic threshold will be served instantly from ElastiCache, bypassing the Bedrock/LLM call entirely, reducing latency to milliseconds, and optimizing token costs.
+1. Log into your **Kong Konnect** Control Plane.
+1. Select your AI Gateway Service.
+1. Add the **AI Semantic Cache** plugin.
+1. Point the configuration to your deployed Amazon ElastiCache (Redis) instance URL.
+1. Define the similarity threshold (e.g., 0.95). Any future LLM requests that hit this semantic threshold will be served instantly from ElastiCache, bypassing the Bedrock/LLM call entirely, reducing latency to milliseconds, and optimizing token costs.
 
 
 
