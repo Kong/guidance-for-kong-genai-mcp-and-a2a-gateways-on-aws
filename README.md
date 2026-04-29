@@ -134,7 +134,7 @@ To activate AI Semantic Caching:
 
 
 
-Kong + AWS - Guidance for GenAI, MCP and A2A Gateway on AWS
+# Kong + AWS - Guidance for GenAI, MCP and A2A Gateway on AWS
 Summary
 This implementation guide provides a comprehensive overview of the Guidance for Generative AI, MCP and A2A Gateway on AWS, including its reference architecture, core components, and key design considerations for deployment.
 
