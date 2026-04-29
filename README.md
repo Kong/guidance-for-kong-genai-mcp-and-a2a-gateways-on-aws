@@ -79,16 +79,16 @@ Before deploying, ensure you have an active Kong Konnect account. If you do not 
 
 ### Deployment Steps
 
-Clone the Repository and navigate to the deployment directory.
-Configure Kong Konnect Secrets: Generate a Data Plane certificate from your Kong Konnect control plane and store the Telemetry/Control Plane endpoints in AWS Secrets Manager.
-Set Environment Variables: Configure your .env file for your selected orchestrator (DEPLOYMENT_PLATFORM="EKS" or "ECS").
-Run Terraform:
-Bash
+1. Clone the Repository and navigate to the deployment directory.
+1. Configure Kong Konnect Secrets: Generate a Data Plane certificate from your Kong Konnect control plane and store the Telemetry/Control Plane endpoints in AWS Secrets Manager.
+1. Set Environment Variables: Configure your .env file for your selected orchestrator (DEPLOYMENT_PLATFORM="EKS" or "ECS").
+1. Run Terraform:
+5. Bash
 
-
+```bash
 terraform init
 terraform apply
-
+```
 
 Time to deploy: Approximately 30-40 minutes.
 Example: Consuming Amazon Bedrock through Kong AI Gateway
