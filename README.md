@@ -1,14 +1,16 @@
 # Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS
-Summary: This implementation guide provides an overview of the Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS, its reference architecture, deployment considerations, and configuration steps. Designed for the Agentic Era, this guide is intended for Solution Architects, AI Engineers, Platform Teams, and Cloud computing professionals who want to deploy a secure, observable, and highly efficient Kong AI Gateway and Agent Gateway environment on Amazon Web Services (AWS).
 
-Overview
+## Summary: This implementation guide provides an overview of the Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS, its reference architecture, deployment considerations, and configuration steps. Designed for the Agentic Era, this guide is intended for Solution Architects, AI Engineers, Platform Teams, and Cloud computing professionals who want to deploy a secure, observable, and highly efficient Kong AI Gateway and Agent Gateway environment on Amazon Web Services (AWS).
+
+## Overview
 As enterprises move from simple GenAI applications to complex multi-agent systems, organizations need an AI connectivity layer that governs interactions safely and at machine speed.
 This implementation guide provides an automated AWS Cloud Development Kit (AWS CDK) and HashiCorp Terraform-based deployment of the Kong AI Gateway onto Amazon Elastic Container Service (Amazon ECS) or Amazon Elastic Kubernetes Service (Amazon EKS). It aims to be pre-configured with defaults allowing users to rapidly spin up Kong's unified gateway, serving as a comprehensive “Context Mesh” that securely brings together APIs, Large Language Models (LLMs), and autonomous agents.
 It provides powerful features out-of-the-box, such as native Amazon Bedrock integration, AI Semantic Caching, multi-provider LLM routing, Agent-to-Agent (A2A) governance, and advanced AI Cost Optimization (AI FinOps).
 
+![Architecture Diagram](assets/images/konnect.png)
 
 
-The Why: Features and Benefits
+## The Why: Features and Benefits
 Without an AI connectivity strategy, there is no visibility, governance, or cost control. Kong AI Gateway serves as a complete enterprise solution for managing and standardizing interactions across your entire digital ecosystem.
 A Unified Control Plane for Agents and LLMs: Proxies and governs all Agent-to-Agent (A2A) communication and LLM consumption through a single, standardized gateway. Maintain audit trails of every RPC call, including caller identity, capabilities invoked, and outcomes.
 AI Cost Optimization & FinOps: Stop margin erosion and implement robust AI FinOps. Administrators can track token usage dynamically, configure usage-based billing, enforce quotas, and drastically reduce latency and costs using AI Semantic Caching (via Amazon ElastiCache/Redis).
