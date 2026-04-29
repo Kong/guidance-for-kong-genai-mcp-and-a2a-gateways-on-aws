@@ -45,6 +45,9 @@ Pre-existing configurations easily route secondary traffic to third-party provid
     * AWS Secrets Manager: Securely stores Kong Konnect control plane certificates, external model provider credentials, and sensitive configurations.
     * Amazon S3 & CloudWatch: Kong Data Planes and the Control Plane stream robust API and AI metrics (token usage, latency, error rates) to CloudWatch and persistent logs to Amazon S3.
 
+
+
+
 ## Plan Your Deployment
 You can customize how your Kong AI Gateway is deployed and accessed based on specific network topologies and compliance requirements.
 
@@ -56,13 +59,17 @@ You can customize how your Kong AI Gateway is deployed and accessed based on spe
 - Ideal for global user bases and globally distributed multi-agent systems.
 
 #### Scenario 2: Custom Domain with CloudFront
-Professional appearance and brand consistency utilizing a custom Amazon Route 53 domain (e.g., ai-gateway.example.com).
-Scenario 3: Private VPC Only (Highly Regulated Environments)
-Maximum security for internal enterprise applications. Complete isolation from the public internet.
-Traffic resolves only via VPN, AWS Direct Connect, or Transit Gateway. Ideal for organizations managing highly sensitive Context Meshes.
+- Professional appearance and brand consistency utilizing a custom Amazon Route 53 domain (e.g., ai-gateway.example.com).
 
-How to: Deploy the Guidance
-Before deploying, ensure you have an active Kong Konnect account. If you do not have one, you can get started with a free 30-day trial of Kong Konnect on the AWS Marketplace.
+#### Scenario 3: Private VPC Only (Highly Regulated Environments)
+- Maximum security for internal enterprise applications. Complete isolation from the public internet.
+- Traffic resolves only via VPN, AWS Direct Connect, or Transit Gateway. Ideal for organizations managing highly sensitive Context Meshes.
+
+
+
+
+## How to: Deploy the Guidance
+Before deploying, ensure you have an active Kong Konnect account. If you do not have one, you can [get started with a free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
 Prerequisite CLI Tools
 Install Docker CLI
 Install AWS CLI
