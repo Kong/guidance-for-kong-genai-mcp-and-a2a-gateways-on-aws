@@ -83,14 +83,14 @@ Before deploying, ensure you have an active Kong Konnect account. If you do not 
 1. Configure Kong Konnect Secrets: Generate a Data Plane certificate from your Kong Konnect control plane and store the Telemetry/Control Plane endpoints in AWS Secrets Manager.
 1. Set Environment Variables: Configure your .env file for your selected orchestrator (DEPLOYMENT_PLATFORM="EKS" or "ECS").
 1. Run Terraform:
-5. Bash
-
+1. Bash
 ```bash
 terraform init
 terraform apply
 ```
+1. Time to deploy: Approximately 30-40 minutes.
 
-Time to deploy: Approximately 30-40 minutes.
+
 Example: Consuming Amazon Bedrock through Kong AI Gateway
 Once deployed, your applications no longer need to manage complex LLM SDKs or AWS SigV4 signing directly for every service. Kong handles the heavy lifting. You can communicate with Amazon Bedrock via a standard unified HTTP request:
 Python
