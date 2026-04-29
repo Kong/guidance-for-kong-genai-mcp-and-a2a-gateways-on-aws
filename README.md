@@ -70,12 +70,15 @@ You can customize how your Kong AI Gateway is deployed and accessed based on spe
 
 ## How to: Deploy the Guidance
 Before deploying, ensure you have an active Kong Konnect account. If you do not have one, you can [get started with a free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
-Prerequisite CLI Tools
-Install Docker CLI
-Install AWS CLI
-Install terraform CLI
-If using Amazon EKS, install kubectl
-Deployment Steps
+
+### Prerequisite CLI Tools
+- Install Docker CLI
+- Install AWS CLI
+- Install terraform CLI
+- If using Amazon EKS, install kubectl
+
+### Deployment Steps
+
 Clone the Repository and navigate to the deployment directory.
 Configure Kong Konnect Secrets: Generate a Data Plane certificate from your Kong Konnect control plane and store the Telemetry/Control Plane endpoints in AWS Secrets Manager.
 Set Environment Variables: Configure your .env file for your selected orchestrator (DEPLOYMENT_PLATFORM="EKS" or "ECS").
