@@ -45,14 +45,17 @@ Pre-existing configurations easily route secondary traffic to third-party provid
     * AWS Secrets Manager: Securely stores Kong Konnect control plane certificates, external model provider credentials, and sensitive configurations.
     * Amazon S3 & CloudWatch: Kong Data Planes and the Control Plane stream robust API and AI metrics (token usage, latency, error rates) to CloudWatch and persistent logs to Amazon S3.
 
-Plan Your Deployment
+## Plan Your Deployment
 You can customize how your Kong AI Gateway is deployed and accessed based on specific network topologies and compliance requirements.
-Deployment Scenarios
-Scenario 1: Default - Public with CloudFront (Recommended)
-Provides global performance with low-latency access via AWS CloudFront edge locations.
-AWS Shield Standard DDoS protection.
-Ideal for global user bases and globally distributed multi-agent systems.
-Scenario 2: Custom Domain with CloudFront
+
+### Deployment Scenarios
+
+#### Scenario 1: Default - Public with CloudFront (Recommended)
+    * Provides global performance with low-latency access via AWS CloudFront edge locations.
+    * AWS Shield Standard DDoS protection.
+    * Ideal for global user bases and globally distributed multi-agent systems.
+
+#### Scenario 2: Custom Domain with CloudFront
 Professional appearance and brand consistency utilizing a custom Amazon Route 53 domain (e.g., ai-gateway.example.com).
 Scenario 3: Private VPC Only (Highly Regulated Environments)
 Maximum security for internal enterprise applications. Complete isolation from the public internet.
