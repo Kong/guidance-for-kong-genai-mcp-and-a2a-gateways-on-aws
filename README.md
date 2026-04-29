@@ -51,10 +51,9 @@ You can customize how your Kong AI Gateway is deployed and accessed based on spe
 ### Deployment Scenarios
 
 #### Scenario 1: Default - Public with CloudFront (Recommended)
-asdasasd
-    * Provides global performance with low-latency access via AWS CloudFront edge locations.
-    * AWS Shield Standard DDoS protection.
-    * Ideal for global user bases and globally distributed multi-agent systems.
+- Provides global performance with low-latency access via AWS CloudFront edge locations.
+- AWS Shield Standard DDoS protection.
+- Ideal for global user bases and globally distributed multi-agent systems.
 
 #### Scenario 2: Custom Domain with CloudFront
 Professional appearance and brand consistency utilizing a custom Amazon Route 53 domain (e.g., ai-gateway.example.com).
