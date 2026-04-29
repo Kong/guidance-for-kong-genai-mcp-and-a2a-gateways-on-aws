@@ -13,21 +13,28 @@ It provides powerful features out-of-the-box, such as native Amazon Bedrock inte
 
 ## The Why: Features and Benefits
 Without an AI connectivity strategy, there is no visibility, governance, or cost control. Kong AI Gateway serves as a complete enterprise solution for managing and standardizing interactions across your entire digital ecosystem.
-A Unified Control Plane for Agents and LLMs: Proxies and governs all Agent-to-Agent (A2A) communication and LLM consumption through a single, standardized gateway. Maintain audit trails of every RPC call, including caller identity, capabilities invoked, and outcomes.
-AI Cost Optimization & FinOps: Stop margin erosion and implement robust AI FinOps. Administrators can track token usage dynamically, configure usage-based billing, enforce quotas, and drastically reduce latency and costs using AI Semantic Caching (via Amazon ElastiCache/Redis).
-Multi-Provider Routing and Fallback: Features a single API for seamless integration with multiple LLM providers. Handle standardized inputs/outputs across models (Amazon Bedrock, OpenAI, Anthropic, etc.) and establish intelligent load balancing, failover mechanisms, and fallback routing to ensure maximum uptime.
-Context Mesh & MCP Governance: Protect your Model Context Protocol (MCP) servers and the data context your agents consume. Kong ensures only authorized agents can access sensitive APIs or invoke specific capabilities.
-Security and Compliance: Protect against prompt injection and enforce content rules using the AI Prompt Guard and AI Prompt Decorator plugins. Enforce centralized authentication, rate limiting, and real-time observability across all AI traffic.
-Use Cases
-Agentic Infrastructure Governance: Provide a dedicated Agent Gateway to standardize A2A security and observability without changing how agents are built.
-Multi-Provider LLM Integration: Focus on application logic rather than managing complex API calls. Seamlessly switch between different LLM providers (e.g., Amazon Bedrock, Azure OpenAI, Cohere) using a consistent interface.
-AI Cost Control: Track token consumption across teams and models, set related budgets, and implement semantic caching to eliminate redundant LLM calls.
-Load Balancing: Distribute high-volume inference requests across multiple LLM endpoints for superior performance and redundancy.
+* A Unified Control Plane for Agents and LLMs: Proxies and governs all Agent-to-Agent (A2A) communication and LLM consumption through a single, standardized gateway. Maintain audit trails of every RPC call, including caller identity, capabilities invoked, and outcomes.
+* AI Cost Optimization & FinOps: Stop margin erosion and implement robust AI FinOps. Administrators can track token usage dynamically, configure usage-based billing, enforce quotas, and drastically reduce latency and costs using AI Semantic Caching (via Amazon ElastiCache/Redis).
+* Multi-Provider Routing and Fallback: Features a single API for seamless integration with multiple LLM providers. Handle standardized inputs/outputs across models (Amazon Bedrock, OpenAI, Anthropic, etc.) and establish intelligent load balancing, failover mechanisms, and fallback routing to ensure maximum uptime.
+* Context Mesh & MCP Governance: Protect your Model Context Protocol (MCP) servers and the data context your agents consume. Kong ensures only authorized agents can access sensitive APIs or invoke specific capabilities.
+* Security and Compliance: Protect against prompt injection and enforce content rules using the AI Prompt Guard and AI Prompt Decorator plugins. Enforce centralized authentication, rate limiting, and real-time observability across all AI traffic.
 
-Architecture Overview
+
+## Use Cases
+1. Agentic Infrastructure Governance: Provide a dedicated Agent Gateway to standardize A2A security and observability without changing how agents are built.
+1. Multi-Provider LLM Integration: Focus on application logic rather than managing complex API calls. Seamlessly switch between different LLM providers (e.g., Amazon Bedrock, Azure OpenAI, Cohere) using a consistent interface.
+1. AI Cost Control: Track token consumption across teams and models, set related budgets, and implement semantic caching to eliminate redundant LLM calls.
+1. Load Balancing: Distribute high-volume inference requests across multiple LLM endpoints for superior performance and redundancy.
+
+
+
+
+
+## Architecture Overview
 The following outlines the reference implementation architecture for deploying the Kong AI Gateway on AWS.
-Architecture Steps
-Traffic Ingress: Client applications and autonomous agents access the Kong AI Gateway proxy API via an Amazon Route 53 endpoint, protected against common web exploits using AWS Web Application Firewall (AWS WAF).
+
+### Architecture Steps
+1. Traffic Ingress: Client applications and autonomous agents access the Kong AI Gateway proxy API via an Amazon Route 53 endpoint, protected against common web exploits using AWS Web Application Firewall (AWS WAF).
 Load Balancing: AWS WAF forwards requests to an Application Load Balancer (ALB), which automatically distributes traffic to Kong Data Plane instances running as containers within Amazon ECS (Fargate) tasks or Amazon EKS pods. TLS/SSL is secured using AWS Certificate Manager (ACM).
 Kong AI Gateway Data Plane: The deployed containers act as your high-performance, low-latency AI proxy. They process plugins natively (e.g., AI Proxy, AI Semantic Cache, AI Prompt Guard) before requests ever reach the foundation models.
 Control Plane (Kong Konnect): Kong Data Planes communicate securely with the Kong Konnect SaaS Control Plane. This provides platform teams with a centralized UI to push declarative configurations, monitor detailed AI analytics, and manage multi-tenant access.
