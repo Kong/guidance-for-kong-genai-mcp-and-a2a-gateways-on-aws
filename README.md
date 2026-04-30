@@ -1,16 +1,32 @@
 # Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS
 
 ## Summary
-This implementation guide provides an overview of the Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS, its reference architecture, deployment considerations, and configuration steps. Designed for the Agentic Era, this guide is intended for Solution Architects, AI Engineers, Platform Teams, and Cloud computing professionals who want to deploy a secure, observable, and highly efficient **Kong AI Gateway**, including its **LLM Gateway**, **MCP Gateway** and **Agent Gateway** environments on Amazon Web Services (AWS).
+The guide outlines how organizations can build a unified gateway to securely access and orchestrate multiple Generative AI (GenAI) providers in addition to emerging architectural patterns such as Model Context Protocol (MCP) for standardized tool and context exchange, Agent-to-Agent (A2A) communication for distributed AI Agents while maintaining governance, observability, and scalability. These patterns enable more advanced use cases, including multi-agent collaboration, tool chaining, and dynamic decision-making across heterogeneous AI services.
+
+The guide provides a Reference Architecture, deployment considerations, and configuration steps. Designed for the Agentic Era, this guide is intended for Solution Architects, AI Engineers, Platform Teams, and Cloud computing professionals who want to deploy a secure, observable, and highly efficient **Kong AI Gateway**, including its **LLM Gateway**, **MCP Gateway** and **Agent Gateway** environments on Amazon Web Services (AWS).
+
+
 
 ## Overview
 As enterprises move from simple GenAI applications to complex multi-agent systems, organizations need an AI connectivity layer that governs interactions safely and at machine speed.
 
 This implementation guide provides instructions to deploy the **Kong AI Gateway** onto **Amazon Elastic Kubernetes Service (Amazon EKS)**. It aims to be pre-configured with defaults allowing users to rapidly spin up Kong's unified gateway, serving as a comprehensive “Context Mesh” that securely brings together APIs, Large Language Models (LLMs), Model Context Protocol (MCP) Servers, and autonomous agents.
 
-It provides powerful features out-of-the-box, such as native **Amazon Bedrock** and **Amazon Bedrock AgentCore** integration, Semantic Caching, Semantic Routing across multi-providers, Agent-to-Agent (A2A) governance, and advanced AI Cost Optimization (AI Metering and Billing).
+It provides powerful features out-of-the-box, such as Semantic Caching, Semantic Routing across multi-providers, Agent-to-Agent (A2A) governance, Token-based Rate Limiting and advanced AI Cost Optimization (AI Metering and Billing).
 
 ![Architecture Diagram](assets/images/konnect.png)
+
+The architecture extends beyond a traditional LLM proxy by incorporating the following complementary layers:
+
+* LLM Gateway for unified access to multiple model providers
+* MCP Gateway to standardize tool and context exchange via the Model Context Protocol
+* Agent Gateway to orchestrate and govern autonomous and multi-agent systems, including Agent-to-Agent (A2A) communication
+* AgentCore integration to provide a managed runtime for executing, scaling, and coordinating AI agents and toolchains
+
+Together, these components form a cohesive AI control plane that manages model inference, agent workflows, and contextual interactions across heterogeneous environments.
+
+The solution integrates natively with **Amazon Bedrock** and **Amazon Bedrock AgentCore**, supporting foundation models, managed prompts, and conversation state. Enterprise-grade authentication is enabled through OAuth 2.0 and JWT-based identity providers (such as **Amazon Cognito**), ensuring secure and scalable access for users, applications, and agents.
+
 
 
 ## The Why: Features and Benefits
@@ -128,6 +144,16 @@ To activate AI Semantic Caching:
 1. Add the **AI Semantic Cache** plugin.
 1. Point the configuration to your deployed Amazon ElastiCache (Redis) instance URL.
 1. Define the similarity threshold (e.g., 0.95). Any future LLM requests that hit this semantic threshold will be served instantly from ElastiCache, bypassing the Bedrock/LLM call entirely, reducing latency to milliseconds, and optimizing token costs.
+
+
+
+
+
+
+
+
+
+
 
 
 
