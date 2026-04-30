@@ -18,15 +18,15 @@ It provides powerful features out-of-the-box, such as Semantic Caching, Semantic
 
 The architecture extends beyond a traditional LLM proxy by incorporating the following complementary layers:
 
-* Konnect Control Plane: responsible for defining APIs and Policies and pushing them to the Kong API Gateway Data Plane.
-* Kong Data Plane: where the Kong AI Gateway resides
-* Kong AI Gateway: based on the Kong API Gateway, it comprehends all AI-based capabilities. Logically speaking, it can be divided into the LLM Gateway, MCP Gateway and Agent Gateway.
-* LLM Gateway for unified access to multiple model providers
-* MCP Gateway to standardize tool and context exchange via the Model Context Protocol
-* Agent Gateway to orchestrate and govern autonomous and multi-agent systems, including Agent-to-Agent (A2A) communication
-* Kong Identity: plays the Identity Provider (IdP) role, implementing OAuth2 Grants, such as Authorization Code and Client Credentials.
-* Amazon Bedrock: provides access to inference services through a unified API.
-* Amacon Bedrock AgentCore integration to provide a managed runtime for executing, scaling, and coordinating AI agents and toolchains
+* **Konnect Control Plane**: responsible for defining APIs and Policies and pushing them to the Kong API Gateway Data Plane.
+* **Kong Data Plane**: where the Kong AI Gateway resides
+* **Kong AI Gateway**: based on the Kong API Gateway, it comprehends all AI-based capabilities. Logically speaking, it can be divided into the LLM Gateway, MCP Gateway and Agent Gateway.
+* **LLM Gateway** for unified access to multiple model providers
+* **MCP Gateway** to standardize tool and context exchange via the Model Context Protocol
+* **Agent Gateway** to orchestrate and govern autonomous and multi-agent systems, including Agent-to-Agent (A2A) communication
+* **Kong Identity**: plays the Identity Provider (IdP) role, implementing OAuth2 Grants, such as Authorization Code and Client Credentials.
+* **Amazon Bedrock**: provides access to inference services through a unified API.
+* **Amazon Bedrock AgentCore**: provides a managed runtime for executing, scaling, and coordinating AI Agents and MCP Servers.
 
 Together, these components form a cohesive AI control plane that manages model inference, agent workflows, and contextual interactions across heterogeneous environments.
 
@@ -45,13 +45,13 @@ The **Agent Gateway** enables orchestration, routing, and governance of AI Agent
 
 **Bedrock AgentCore** complements this by acting as the managed execution layer for Agents and MCP Servers. It provides capabilities such as lifecycle management, tool execution, state handling, and scalable runtime environments for agents and workflows. This enables organizations to operationalize agent-based architectures with reliability, elasticity, and governance, without having to build custom orchestration engines from scratch.
 
-The platform enables centralized management of usage across users, teams, applications, and agents. Administrators can define budgets, enforce rate limits, restrict access to specific models or tools, and implement fine-grained routing and policy controls. Intelligent traffic management includes load balancing, automatic failover, retry strategies, and caching to optimize both performance and cost.
+The platform enables **centralized management** of usage across users, teams, applications, and agents. Administrators can define budgets, enforce rate limits, restrict access to specific models or tools, and implement fine-grained routing and policy controls. Intelligent traffic management includes load balancing, automatic failover, retry strategies, and caching to optimize both performance and cost.
 
-Security and compliance are foundational. The solution integrates with **Amazon Bedrock Guardrails** and extends safety, validation, and policy enforcement across all LLM providers, MCP tools, and agent interactions. It supports secure credential handling, token-based authentication, and end-to-end authorization, ensuring that both human users and autonomous agents operate within defined constraints.
+**Security and compliance are foundational**. The solution integrates with **Amazon Bedrock Guardrails** and extends safety, validation, and policy enforcement across all LLM providers, MCP tools, and agent interactions. It supports secure credential handling, token-based authentication, and end-to-end authorization, ensuring that both human users and autonomous agents operate within defined constraints.
 
-Observability features provide deep visibility into LLM calls, MCP tool usage, and agent workflows, including logs, metrics, and traces. This enables debugging, auditing, performance tuning, and governance at scale.
+**Observability** features provide deep visibility into LLM calls, MCP tool usage, and agent workflows, including logs, metrics, and traces. This enables debugging, auditing, performance tuning, and governance at scale.
 
-Cost optimization mechanisms include prompt and response caching, usage attribution across teams and agents, budget enforcement, and real-time monitoring of resource consumption.
+**Cost optimization mechanisms** include prompt and response caching, usage attribution across teams and agents, budget enforcement, and real-time monitoring of resource consumption.
 
 All functionality is accessible via APIs and an intuitive administrative UI, allowing operators to manage configurations and policies, while developers and users can test models, invoke tools, and interact with agents.
 
