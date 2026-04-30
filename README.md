@@ -1,11 +1,13 @@
 # Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS
 
 ## Summary
-This implementation guide provides an overview of the Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS, its reference architecture, deployment considerations, and configuration steps. Designed for the Agentic Era, this guide is intended for Solution Architects, AI Engineers, Platform Teams, and Cloud computing professionals who want to deploy a secure, observable, and highly efficient **Kong AI Gateway** and **Agent Gateway** environment on Amazon Web Services (AWS).
+This implementation guide provides an overview of the Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS, its reference architecture, deployment considerations, and configuration steps. Designed for the Agentic Era, this guide is intended for Solution Architects, AI Engineers, Platform Teams, and Cloud computing professionals who want to deploy a secure, observable, and highly efficient **Kong AI Gateway**, including its **LLM Gateway**, **MCP Gateway** and **Agent Gateway** environments on Amazon Web Services (AWS).
 
 ## Overview
 As enterprises move from simple GenAI applications to complex multi-agent systems, organizations need an AI connectivity layer that governs interactions safely and at machine speed.
+
 This implementation guide provides an automated AWS Cloud Development Kit (AWS CDK) and HashiCorp Terraform-based deployment of the **Kong AI Gateway** onto Amazon Elastic Container Service (Amazon ECS) or Amazon Elastic Kubernetes Service (Amazon EKS). It aims to be pre-configured with defaults allowing users to rapidly spin up Kong's unified gateway, serving as a comprehensive “Context Mesh” that securely brings together APIs, Large Language Models (LLMs), and autonomous agents.
+
 It provides powerful features out-of-the-box, such as native Amazon Bedrock integration, AI Semantic Caching, multi-provider LLM routing, Agent-to-Agent (A2A) governance, and advanced AI Cost Optimization (AI FinOps).
 
 ![Architecture Diagram](assets/images/konnect.png)
