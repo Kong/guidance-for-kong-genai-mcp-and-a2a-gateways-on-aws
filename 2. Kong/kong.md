@@ -15,7 +15,7 @@ helm repo update kong
 helm upgrade --install kong-operator kong/kong-operator \
 -n kong-system \
 --create-namespace \
---set image.tag=2.1.1 \
+--set image.tag=2.1.5 \
 --set kubernetes-configuration-crds.enabled=true \
 --set env.ENABLE_CONTROLLER_KONNECT=true
 ```
