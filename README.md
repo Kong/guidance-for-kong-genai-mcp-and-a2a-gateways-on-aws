@@ -93,7 +93,7 @@ You can customize how your Kong AI Gateway is deployed and accessed based on spe
 Before deploying, ensure you have an active Kong Konnect account. If you do not have one, you can [get started with a free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
 
 ### Prerequisite CLI Tools
-- Install Docker CLI
+- Install [**Kong decK**](https://developer.konghq.com/deck/) CLI
 - Install AWS CLI
 - Install terraform CLI
 - If using Amazon EKS, install kubectl
