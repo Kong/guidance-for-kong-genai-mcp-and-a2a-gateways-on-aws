@@ -119,7 +119,7 @@ spec:
      spec:
        containers:
        - name: proxy
-         image: kong/kong-gateway:3.13
+         image: kong/kong-gateway:3.14
  network:
    services:
      ingress:
@@ -158,7 +158,8 @@ kubectl logs -f $(kubectl get pod -n kong -o json | jq -r '.items[].metadata | s
 
 You should see your Data Plane in Konnect UI:
 
-<img src="../static/images/data_plane.png">
+![Data Plane](../assets/images/data_plane.png)
+
 
 #### Check the Load Balancer Listener
 
