@@ -73,14 +73,8 @@ EOF
 ```
 
 
-<img src="../static/images/control_plane.png">
-
 You can check your Data Plane in Konnect UI:
-![Architecture Diagram](/assets/images/konnect.png)
-
-
-
-![Control Plane](../assets/images/konnect.png)
+![Control Plane](../assets/images/control_plane.png)
 
 ## Data Plane
 
