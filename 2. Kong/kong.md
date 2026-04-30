@@ -2,6 +2,50 @@
 
 Now it's time to create the Konnect Control Plane and deploy the Data Plane in our EKS Cluster.
 
+## Pod Identity
+
+```
+aws iam create-policy \
+ --policy-name bedrock-policy \
+ --policy-document '{
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Effect": "Allow",
+			"Action": [
+				"bedrock:InvokeModel",
+				"bedrock:InvokeModelWithResponseStream",
+				"bedrock:ApplyGuardrail",
+				"bedrock:CallWithBearerToken",
+				"bedrock-agentcore:InvokeAgentRuntime",
+				"bedrock-agentcore:GetAgentCard",
+				"secretsmanager:ListSecrets",
+				"secretsmanager:GetSecretValue"
+			],
+			"Resource": "*"
+		}
+	]
+}'
+```
+
+```
+kubectl delete namespace kong
+
+kubectl create namespace kong
+kubectl create sa kaigateway-podid-sa -n kong
+```
+
+### Define PodIdentityAssociation
+```
+eksctl create podidentityassociation \
+  --cluster kong313 \
+  --region us-west-2 \
+  --namespace kong \
+  --service-account-name kaigateway-podid-sa \
+  --role-name kaigateway-aws-podid-role \
+  --permission-policy-arns arn:aws:iam::481711488351:policy/bedrock-policy
+```
+
 ## Kong Operator
 
 Install the [Kong Operator](https://developer.konghq.com/operator/)
@@ -263,4 +307,20 @@ X-Kong-Request-Id: 3c38636dfcb2140c62665b654455083c
   "message":"no Route matched with those values",
   "request_id":"3c38636dfcb2140c62665b654455083c"
 }
+```
+
+
+
+### Delete CP/DP
+```
+kubectl delete dataplane kong-aws-dp -n kong
+kubectl delete konnectextensions.konnect.konghq.com konnect-config-aws -n kong
+
+
+kubectl delete konnectgatewaycontrolplane kong-aws -n kong
+kubectl delete konnectapiauthconfiguration konnect-api-auth-conf -n kong
+
+
+kubectl delete secret konnect-pat -n kong
+kubectl delete namespace kong
 ```
