@@ -6,9 +6,9 @@ This implementation guide provides an overview of the Guidance for Multi-Agent, 
 ## Overview
 As enterprises move from simple GenAI applications to complex multi-agent systems, organizations need an AI connectivity layer that governs interactions safely and at machine speed.
 
-This implementation guide provides an automated AWS Cloud Development Kit (AWS CDK) and HashiCorp Terraform-based deployment of the **Kong AI Gateway** onto Amazon Elastic Container Service (Amazon ECS) or Amazon Elastic Kubernetes Service (Amazon EKS). It aims to be pre-configured with defaults allowing users to rapidly spin up Kong's unified gateway, serving as a comprehensive “Context Mesh” that securely brings together APIs, Large Language Models (LLMs), and autonomous agents.
+This implementation guide provides instructions to deploy the **Kong AI Gateway** onto **Amazon Elastic Kubernetes Service (Amazon EKS)**. It aims to be pre-configured with defaults allowing users to rapidly spin up Kong's unified gateway, serving as a comprehensive “Context Mesh” that securely brings together APIs, Large Language Models (LLMs), Model Context Protocol (MCP) Servers, and autonomous agents.
 
-It provides powerful features out-of-the-box, such as native Amazon Bedrock integration, AI Semantic Caching, multi-provider LLM routing, Agent-to-Agent (A2A) governance, and advanced AI Cost Optimization (AI FinOps).
+It provides powerful features out-of-the-box, such as native **Amazon Bedrock** and **Amazon Bedrock AgentCore** integration, Semantic Caching, Semantic Routing across multi-providers, Agent-to-Agent (A2A) governance, and advanced AI Cost Optimization (AI Metering and Billing).
 
 ![Architecture Diagram](assets/images/konnect.png)
 
