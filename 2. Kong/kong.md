@@ -75,6 +75,7 @@ EOF
 You can check your Data Plane in Konnect UI:
 
 <img src="../static/images/control_plane.png">
+![Control Plane](assets/images/konnect.png)
 
 ## Data Plane
 
