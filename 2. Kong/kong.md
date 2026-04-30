@@ -251,12 +251,12 @@ curl -i https://kong-dp.$AWS_DOMAIN
 
 ```
 HTTP/1.1 404 Not Found
-Date: Tue, 10 Mar 2026 18:56:30 GMT
+Date: Tue, 28 Apr 2026 18:56:30 GMT
 Content-Type: application/json; charset=utf-8
 Connection: keep-alive
 Content-Length: 103
 X-Kong-Response-Latency: 0
-Server: kong/3.13.0.1-enterprise-edition
+Server: kong/3.14.0.0-enterprise-edition
 X-Kong-Request-Id: 3c38636dfcb2140c62665b654455083c
 
 {

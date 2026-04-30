@@ -1,4 +1,4 @@
-# Docusign Extension App - Development Time
+# ABC
 
 With the Kong API Gateway Data Plane deployed, we need to configure it exposing an application. For the Development Time, one good option is to mock the application using the [**Kong Mocking Plugin**](https://developer.konghq.com/plugins/mocking/).
 
@@ -15,12 +15,12 @@ The **OpenAPI Spec** we are going to use is [here](../openapi.yml).
 
 The **decK** (Declarations for Kong) tool is used to configure the **Mocking Plugin**
 
-The **Mocking Plugin** configuration takes the **OpenAPI** specification and defines a **Kong Service** and a **Kong Route**. Note the **Kong Service** is ignored since the **Mocking Plugin** is going to manage the requests. The **decK** file can be found [here](../kong_docusign_mock.yaml)
+The **Mocking Plugin** configuration takes the **OpenAPI** specification and defines a **Kong Service** and a **Kong Route**. Note the **Kong Service** is ignored since the **Mocking Plugin** is going to manage the requests. The **decK** file can be found [here](../kong_aws_mock.yaml)
 
 
 ```
 deck gateway reset --konnect-control-plane-name kong-aws --konnect-token $PAT -f
-deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT kong_docusign_mock.yaml
+deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT kong_aws_mock.yaml
 ```
 
 
