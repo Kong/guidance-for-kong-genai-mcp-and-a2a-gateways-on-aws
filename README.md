@@ -174,6 +174,48 @@ To activate AI Semantic Caching:
 
 
 
+# Kong API Gateway and Docusign Extension Apps
+
+This repo describes how to configure Kong API Gateway to protect Docusing Extension Apps. The Reference Architecture is below:
+
+<img src="./static/images/architecture.png" width="1000" height="850"/>
+
+The main components are:
+* Konnect Control Plane: responsible for defining APIs and Policies and pushing them to the Kong API Gateway Data Plane.
+* Kong API Data Plane: responsible for protecting with Microservices implementing the Application logic with the Policies described in the Control Plane, such as Rate Limiting, Authentication, etc.
+* Kong Identity: plays the Identity Provider (IdP) role, implementing OAuth2 Grants, such as Authorization Code and Client Credentials.
+* DataIO Microservices: implement the actual Application.
+* Docusign Developer: creates and deploys the Docusign Extension App.
+* Docusign Maestro:
+
+The DataIO Microservices are protected by an OpenId Connect Grant, where the Docusign Extension App is responsible for hitting the Identity Provider, implemented by Kong Identity, to get an Access Token. The Access Token is injected to all requests sent to Kong Data Plane which validates the Access Token before routing the request to the actual DataIO Microservices.
+
+Other Policies can also be defined in Kong Konnect Control Plane and enforced by Kong Data Plane, please check the [Konnect Plugin Hub portal](https://developer.konghq.com/plugins/) to learn more about them. Each Kong Plugin implements a specific policy, including Transformation, Security, Authentication, Traffic Control, etc.
+
+This repo contains artifacts to deploy Kong Data Plane in an Amazon Elastic Kubernete Service (EKS) Cluster. Kong supports several other platforms including other Kubernetes distributions, VMs, Docker-based runtimes, etc. Check the [Kong Gateway installationg page](https://developer.konghq.com/gateway/install/) to learn more.
+
+To have your own deployment read the instructs described in the following order:
+
+1. [AWS and EKS](./1.%20AWS-EKS/aws-eks.md)
+2. [Konnect Control Plane and Data Plane](./2.%20Kong/kong.md)
+3. [Docusign Extension App - Development Time](./3.%20Development%20Time/development-time.md)
+4. [Docusign Extension App - Production Time](./4.%20Production%20Time/production-time.md)
+5. [Kong Identity](./5.%20Kong%20Identity/kong-identity.md)
+
+
+Register to both:
+* [Kong Konnect](https://cloud.konghq.com)
+* [Docusign](http://developers.docusign.com/)
+
+Make sure you have the following tools installed:
+* [AWS cli](https://github.com/aws/aws-cli)
+* [eksctl](https://github.com/eksctl-io/eksctl)
+* [Helm](https://helm.sh/)
+* [decK](https://developer.konghq.com/deck/)
+
+
+
+
 
 
 
