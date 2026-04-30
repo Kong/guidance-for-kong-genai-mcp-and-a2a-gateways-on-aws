@@ -108,7 +108,7 @@ For the deployment, ensure you have the following command line utilities install
 ### Deployment Steps
 1. [AWS and EKS](./1.%20AWS-EKS/aws-eks.md)
 1. [Konnect Control Plane and Data Plane](./2.%20Kong/kong.md)
-1. [Kong Identity](./5.%20Kong%20Identity/kong-identity.md)
+1. [Kong Identity](./3.%20Kong%20Identity/kong-identity.md)
 
 
 
