@@ -34,7 +34,7 @@ The solution integrates natively with **Amazon Bedrock** and **Amazon Bedrock Ag
 
 
 
-## The Why: Features and Benefits
+## Features and Benefits
 This comprehensive platform delivers a unified enterprise solution for governing interactions across LLMs, MCP-enabled tools, and AI agents, enhanced by **Kong AI Gateway** and **AgentCore** as the execution backbone.
 
 At its core, **Kong LLM Gateway** provides a single, consistent API layer for multiple LLM providers (Amazon Bedrock, OpenAI, Anthropic, etc.) and others—standardizing request and response formats across text generation, embeddings, TTS (Text-To-Speach), STT (Speach-To-Text) and multimodal workloads. It abstracts provider-specific APIs while maintaining flexibility and portability.
@@ -88,27 +88,9 @@ The following outlines the reference implementation architecture for deploying t
 
 
 
-## Plan Your Deployment
-You can customize how your Kong AI Gateway is deployed and accessed based on specific network topologies and compliance requirements.
-
-### Deployment Scenarios
-
-#### Scenario 1: Default - Public with CloudFront (Recommended)
-- Provides global performance with low-latency access via AWS CloudFront edge locations.
-- AWS Shield Standard DDoS protection.
-- Ideal for global user bases and globally distributed multi-agent systems.
-
-#### Scenario 2: Custom Domain with CloudFront
-- Professional appearance and brand consistency utilizing a custom Amazon Route 53 domain (e.g., ai-gateway.example.com).
-
-#### Scenario 3: Private VPC Only (Highly Regulated Environments)
-- Maximum security for internal enterprise applications. Complete isolation from the public internet.
-- Traffic resolves only via VPN, AWS Direct Connect, or Transit Gateway. Ideal for organizations managing highly sensitive Context Meshes.
 
 
-
-
-## How to: Deploy the Guidance
+## Deploy the Guidance
 Before deploying, ensure you have an active Kong Konnect account. If you do not have one, you can [get started with a free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
 
 ### Prerequisite CLI Tools
@@ -123,17 +105,10 @@ For the deployment, ensure you have the following command line utilities install
 - [jwt-cli](https://github.com/mike-engel/jwt-cli)
 - [wget](https://www.gnu.org/software/wget/)
 
-
-
-
-
-
 ### Deployment Steps
 1. [AWS and EKS](./1.%20AWS-EKS/aws-eks.md)
 1. [Konnect Control Plane and Data Plane](./2.%20Kong/kong.md)
 1. [Kong Identity](./5.%20Kong%20Identity/kong-identity.md)
 
-Register to both:
-* [Kong Konnect](https://cloud.konghq.com)
 
 
