@@ -19,11 +19,11 @@ It provides powerful features out-of-the-box, such as Semantic Caching, Semantic
 The architecture extends beyond a traditional LLM proxy by incorporating the following complementary layers:
 
 * **Konnect Control Plane**: responsible for defining APIs and Policies and pushing them to the Kong API Gateway Data Plane.
-* **Kong Data Plane**: where the Kong AI Gateway resides
+* **Kong Data Plane**: where the Kong AI Gateway resides.
 * **Kong AI Gateway**: based on the Kong API Gateway, it comprehends all AI-based capabilities. Logically speaking, it can be divided into the LLM Gateway, MCP Gateway and Agent Gateway.
-* **LLM Gateway** for unified access to multiple model providers
-* **MCP Gateway** to standardize tool and context exchange via the Model Context Protocol
-* **Agent Gateway** to orchestrate and govern autonomous and multi-agent systems, including Agent-to-Agent (A2A) communication
+* **LLM Gateway** for unified access to multiple model providers.
+* **MCP Gateway** to standardize tool and context exchange via the Model Context Protocol.
+* **Agent Gateway** to orchestrate and govern autonomous and multi-agent systems, including Agent-to-Agent (A2A) communication.
 * **Kong Identity**: plays the Identity Provider (IdP) role, implementing OAuth2 Grants, such as Authorization Code and Client Credentials.
 * **Amazon Bedrock**: provides access to inference services through a unified API.
 * **Amazon Bedrock AgentCore**: provides a managed runtime for executing, scaling, and coordinating AI Agents and MCP Servers.
@@ -124,97 +124,16 @@ For the deployment, ensure you have the following command line utilities install
 - [wget](https://www.gnu.org/software/wget/)
 
 
+
+
+
+
 ### Deployment Steps
-1. **Clone the Repository** and navigate to the deployment directory.
-2. **Configure Kong Konnect Secrets**: Generate a Data Plane certificate from your Kong Konnect control plane and store the Telemetry/Control Plane endpoints in AWS Secrets Manager.
-3. **Set Environment Variables**: Configure your .env file for your selected orchestrator (DEPLOYMENT_PLATFORM="EKS" or "ECS").
-4. **Run Terraform**:
-```bash
-terraform init
-terraform apply
-```
-5. **Time to deploy**: Approximately 30-40 minutes.
-
-
-### Example: Consuming Amazon Bedrock through Kong AI Gateway
-Once deployed, your applications no longer need to manage complex LLM SDKs or AWS SigV4 signing directly for every service. Kong handles the heavy lifting. You can communicate with Amazon Bedrock via a standard unified HTTP request:
-
-```python
-import os
-import requests
-
-# Set your Kong API Gateway endpoint and authentication
-KONG_ENDPOINT = os.getenv("KONG_AI_PROXY_ENDPOINT") # e.g., https://ai-gateway.yourdomain.com/v1/chat/completions
-KONG_API_KEY = os.getenv("KONG_CONSUMER_API_KEY")
-
-headers = {
-    "Authorization": f"Bearer {KONG_API_KEY}",
-    "Content-Type": "application/json"
-}
-
-# The payload format is standardized. Kong automatically translates this 
-# into the correct Amazon Bedrock Converse API format.
-payload = {
-    "model": "bedrock/anthropic.claude-3-5-sonnet-20240620-v1:0", 
-    "messages": [
-        {"role": "user", "content": "Explain the concept of Agentic AI governance."}
-    ]
-}
-
-response = requests.post(KONG_ENDPOINT, headers=headers, json=payload)
-
-print(response.json())
-```
-
-### Implementing AI Cost Optimization
-To activate AI Semantic Caching:
-1. Log into your **Kong Konnect** Control Plane.
-1. Select your AI Gateway Service.
-1. Add the **AI Semantic Cache** plugin.
-1. Point the configuration to your deployed Amazon ElastiCache (Redis) instance URL.
-1. Define the similarity threshold (e.g., 0.95). Any future LLM requests that hit this semantic threshold will be served instantly from ElastiCache, bypassing the Bedrock/LLM call entirely, reducing latency to milliseconds, and optimizing token costs.
-
-
-
-
-
-
-
-The DataIO Microservices are protected by an OpenId Connect Grant, where the Docusign Extension App is responsible for hitting the Identity Provider, implemented by Kong Identity, to get an Access Token. The Access Token is injected to all requests sent to Kong Data Plane which validates the Access Token before routing the request to the actual DataIO Microservices.
-
-Other Policies can also be defined in Kong Konnect Control Plane and enforced by Kong Data Plane, please check the [Konnect Plugin Hub portal](https://developer.konghq.com/plugins/) to learn more about them. Each Kong Plugin implements a specific policy, including Transformation, Security, Authentication, Traffic Control, etc.
-
-This repo contains artifacts to deploy Kong Data Plane in an Amazon Elastic Kubernete Service (EKS) Cluster. Kong supports several other platforms including other Kubernetes distributions, VMs, Docker-based runtimes, etc. Check the [Kong Gateway installationg page](https://developer.konghq.com/gateway/install/) to learn more.
-
-To have your own deployment read the instructs described in the following order:
-
 1. [AWS and EKS](./1.%20AWS-EKS/aws-eks.md)
-2. [Konnect Control Plane and Data Plane](./2.%20Kong/kong.md)
-3. [Docusign Extension App - Development Time](./3.%20Development%20Time/development-time.md)
-4. [Docusign Extension App - Production Time](./4.%20Production%20Time/production-time.md)
-5. [Kong Identity](./5.%20Kong%20Identity/kong-identity.md)
-
+1. [Konnect Control Plane and Data Plane](./2.%20Kong/kong.md)
+1. [Kong Identity](./5.%20Kong%20Identity/kong-identity.md)
 
 Register to both:
 * [Kong Konnect](https://cloud.konghq.com)
-* [Docusign](http://developers.docusign.com/)
-
-Make sure you have the following tools installed:
-* [AWS cli](https://github.com/aws/aws-cli)
-* [eksctl](https://github.com/eksctl-io/eksctl)
-* [Helm](https://helm.sh/)
-* [decK](https://developer.konghq.com/deck/)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
