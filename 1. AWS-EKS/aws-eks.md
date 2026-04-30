@@ -198,4 +198,6 @@ Value: _xyz456.acm-validations.aws
 Type:  CNAME
 ```
 
+That's what you retrieved using the ``acm describe-certificate`` commands.
+
 **AWS Route 53** is the DNS Authority. Adding this entry to **Route 53** allows **ACM**, acting like a DNS client and querying **Route 53** using the ``Name`` of the CNAME entry, to verify if you actually control ``<YOUR_DOMAIN>``.
