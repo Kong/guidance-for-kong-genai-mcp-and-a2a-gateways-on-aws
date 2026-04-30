@@ -1,6 +1,6 @@
 # Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS
 
-## Summaryyy
+## Summary
 This implementation guide provides an overview of the Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS, its reference architecture, deployment considerations, and configuration steps. Designed for the Agentic Era, this guide is intended for Solution Architects, AI Engineers, Platform Teams, and Cloud computing professionals who want to deploy a secure, observable, and highly efficient **Kong AI Gateway** and **Agent Gateway** environment on Amazon Web Services (AWS).
 
 ## Overview
