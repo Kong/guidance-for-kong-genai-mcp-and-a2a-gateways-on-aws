@@ -40,7 +40,7 @@ Without an AI connectivity strategy, there is no visibility, governance, or cost
 
 ## Use Cases
 1. **Agentic Infrastructure Governance**: Provide a dedicated Agent Gateway to standardize A2A security and observability without changing how agents are built.
-1. **MCP Server proxying and abstract RESTful API abstraction**: Interact with upstream MCP servers or connect any Kong-managed Service to the Model Context Protocol (MCP), acting as a protocol bridge, translating between MCP and HTTP.
+1. **MCP Server proxying and RESTful API abstraction**: Interact with upstream MCP servers or connect any Kong-managed Service to the Model Context Protocol (MCP), acting as a protocol bridge, translating between MCP and HTTP.
 1. **Multi-Provider LLM Integration**: Focus on application logic rather than managing complex API calls. Seamlessly switch between different LLM providers (e.g., Amazon Bedrock, Azure OpenAI, Cohere) using a consistent interface.
 1. **AI Cost Control**: Track token consumption across teams and models, set related budgets, and implement semantic caching to eliminate redundant LLM calls.
 1. **Load Balancing**: Distribute high-volume inference requests across multiple LLM endpoints for superior performance and redundancy.
@@ -50,19 +50,21 @@ Without an AI connectivity strategy, there is no visibility, governance, or cost
 
 
 ## Architecture Overview
-The following outlines the reference implementation architecture for deploying the Kong AI Gateway on AWS.
+The following outlines the reference implementation architecture for deploying the **Kong AI Gateway on AWS**.
 
 ### Architecture Steps
-1. **Traffic Ingress**: Client applications and autonomous agents access the Kong AI Gateway proxy API via an Amazon Route 53 endpoint, protected against common web exploits using AWS Web Application Firewall (AWS WAF).
-1. **Load Balancing**: AWS WAF forwards requests to an Application Load Balancer (ALB), which automatically distributes traffic to Kong Data Plane instances running as containers within Amazon ECS (Fargate) tasks or Amazon EKS pods. TLS/SSL is secured using AWS Certificate Manager (ACM).
+<!-- 1. **Traffic Ingress**: Client applications and autonomous agents access the **Kong AI Gateway** proxy API via an **Amazon Route 53** endpoint, protected against common web exploits using **AWS Web Application Firewall (WAF)**. -->
+1. **Load Balancing**: **AWS WAF** forwards requests to a **Network Load Balancer (NLB)**, which automatically distributes traffic to **Kong Data Plane** instances running as containers within **Amazon EKS** pods. TLS/SSL is secured using **AWS Certificate Manager (ACM)**.
 1. **Kong AI Gateway Data Plane**: The deployed containers act as your high-performance, low-latency AI proxy. They process plugins natively (e.g., AI Proxy, AI Semantic Cache, AI Prompt Guard) before requests ever reach the foundation models.
-1. **Control Plane (Kong Konnect): Kong Data Planes communicate securely with the Kong Konnect SaaS Control Plane. This provides platform teams with a centralized UI to push declarative configurations, monitor detailed AI analytics, and manage multi-tenant access.
-1. **LLM Integrations**: Kong integrates natively with **Amazon Bedrock** to seamlessly handle prompt translation, model access, and routing to models like Amazon Nova or Anthropic Claude.
-Pre-existing configurations easily route secondary traffic to third-party providers (OpenAI, Vertex AI) using native Kong AI plugins.
+1. **Control Plane (Kong Konnect)**: Kong Data Planes communicate securely with the **Kong Konnect Control Plane**. This provides platform teams with a centralized UI to push declarative configurations, monitor detailed AI analytics, and manage multi-tenant access.
+1. **LLM Integrations**: Kong integrates natively with **Amazon Bedrock** to seamlessly handle prompt translation, model access, and routing to models like **Amazon Nova** or **Anthropic Claude**.
+1. **Guardrails**: Kong leverages **Amazon Bedrock Guardrails** to apply compliance and safety polcies at the Gateway level.
+1. **MCP Server Integrations**: Kong integrates with **Amazon Bedrock AgentCore** to protect and enforce policies related to the existing MCP Servers.
+1. **A2A Integrations**: Agents deployed in **Amazon Bedrock AgentCore** will be able to, through the **Kong Agent Gateway**, interact with other existsing and external Agents.
 1. **AWS Services Integration**:
-    * **Amazon ElastiCache (Redis)**: Acts as the high-speed backend for Kong's AI Semantic Caching, enabling multi-tenant prompt caching to optimize costs.
+    * **Amazon MemoryDB for Redis**: Acts as the high-speed backend for Kong's AI Semantic Caching, Semantic Routing and Semantic Prompt and Response Guards.
     * **AWS Secrets Manager**: Securely stores Kong Konnect control plane certificates, external model provider credentials, and sensitive configurations.
-    * **Amazon S3 & CloudWatch**: Kong Data Planes and the Control Plane stream robust API and AI metrics (token usage, latency, error rates) to CloudWatch and persistent logs to Amazon S3.
+    * **Amazon CloudWatch**: Kong Data Planes and the Control Plane stream robust API and AI metrics (token usage, latency, error rates) to CloudWatch.
 
 
 
