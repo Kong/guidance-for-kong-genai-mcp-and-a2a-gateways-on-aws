@@ -4,17 +4,17 @@
 
 Create the EKS Cluster with:
 ```
-eksctl create cluster --name kong313 --version 1.35 --region us-west-2 --nodegroup-name kong-node --node-type c5.xlarge --nodes 1
+eksctl create cluster --name kong314 --version 1.35 --region us-west-2 --nodegroup-name kong-node --node-type c5.xlarge --nodes 1
 ```
 
-Please check all [AWS Instaces Types available](https://aws.amazon.com/ec2/instance-types/). Also, check the command accordingly if you want to create your cluster in a different region or name it differently.
+Please check all [AWS Instances Types available](https://aws.amazon.com/ec2/instance-types/). Also, check the command accordingly if you want to create your cluster in a different region or name it differently.
 
 #### Pod Identity
 
 EKS Pod Identity AddOn allows the AWS Load Balancer Controller to provision new Load Balancers
 
 ```
-eksctl create addon --cluster kong313 \
+eksctl create addon --cluster kong314 \
   --region us-west-2 \
   --name eks-pod-identity-agent
 ```
@@ -30,7 +30,7 @@ Now, install the AWS Load Balancer Controller to expose the Kong API Gateway Dat
 #### Create the IAM Policy for the Controller
 
 ```
-curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.0.0/docs/install/iam_policy.json
+curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v3.2.2/docs/install/iam_policy.json
 ```
 
 ```
@@ -46,17 +46,17 @@ Use your AWS account to create the Pod Identity association and install the Load
 
 ```
 eksctl create podidentityassociation \
-    --cluster kong313 \
+    --cluster kong314 \
     --region us-west-2 \
     --namespace kube-system \
     --service-account-name aws-load-balancer-controller \
-    --role-name AWSLoadBalancerControllerIAMRole-kong313 \
+    --role-name AWSLoadBalancerControllerIAMRole-kong314 \
     --permission-policy-arns arn:aws:iam::<YOUR_AWS_ACCOUNT_ID>:policy/AWSLoadBalancerControllerIAMPolicy
 ```
 
 ```
 helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n kube-system \
-  --set clusterName=kong313 \
+  --set clusterName=kong314 \
   --set region=us-west-2 \
   --set serviceAccount.create=true \
   --set serviceAccount.name=aws-load-balancer-controller
