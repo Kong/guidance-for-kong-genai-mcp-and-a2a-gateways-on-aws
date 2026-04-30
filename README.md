@@ -54,7 +54,7 @@ The following outlines the reference implementation architecture for deploying t
 
 ### Architecture Steps
 <!-- 1. **Traffic Ingress**: Client applications and autonomous agents access the **Kong AI Gateway** proxy API via an **Amazon Route 53** endpoint, protected against common web exploits using **AWS Web Application Firewall (WAF)**. -->
-1. **Load Balancing**: **AWS WAF** forwards requests to a **Network Load Balancer (NLB)**, which automatically distributes traffic to **Kong Data Plane** instances running as containers within **Amazon EKS** pods. TLS/SSL is secured using **AWS Certificate Manager (ACM)**.
+1. **Load Balancing**: Requests are sent a **Network Load Balancer (NLB)** which automatically distributes traffic to **Kong Data Plane** instances running as containers within **Amazon EKS** pods. TLS/SSL is secured using **AWS Certificate Manager (ACM)**.
 1. **Kong AI Gateway Data Plane**: The deployed containers act as your high-performance, low-latency AI proxy. They process plugins natively (e.g., AI Proxy, AI Semantic Cache, AI Prompt Guard) before requests ever reach the foundation models.
 1. **Control Plane (Kong Konnect)**: Kong Data Planes communicate securely with the **Kong Konnect Control Plane**. This provides platform teams with a centralized UI to push declarative configurations, monitor detailed AI analytics, and manage multi-tenant access.
 1. **LLM Integrations**: Kong integrates natively with **Amazon Bedrock** to seamlessly handle prompt translation, model access, and routing to models like **Amazon Nova** or **Anthropic Claude**.
