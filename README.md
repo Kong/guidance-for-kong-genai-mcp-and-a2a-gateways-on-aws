@@ -18,14 +18,19 @@ It provides powerful features out-of-the-box, such as Semantic Caching, Semantic
 
 The architecture extends beyond a traditional LLM proxy by incorporating the following complementary layers:
 
+* Konnect Control Plane: responsible for defining APIs and Policies and pushing them to the Kong API Gateway Data Plane.
+* Kong Data Plane: where the Kong AI Gateway resides
+* Kong AI Gateway: based on the Kong API Gateway, it comprehends all AI-based capabilities. Logically speaking, it can be divided into the LLM Gateway, MCP Gateway and Agent Gateway.
 * LLM Gateway for unified access to multiple model providers
 * MCP Gateway to standardize tool and context exchange via the Model Context Protocol
 * Agent Gateway to orchestrate and govern autonomous and multi-agent systems, including Agent-to-Agent (A2A) communication
-* AgentCore integration to provide a managed runtime for executing, scaling, and coordinating AI agents and toolchains
+* Kong Identity: plays the Identity Provider (IdP) role, implementing OAuth2 Grants, such as Authorization Code and Client Credentials.
+* Amazon Bedrock: provides access to inference services through a unified API.
+* Amacon Bedrock AgentCore integration to provide a managed runtime for executing, scaling, and coordinating AI agents and toolchains
 
 Together, these components form a cohesive AI control plane that manages model inference, agent workflows, and contextual interactions across heterogeneous environments.
 
-The solution integrates natively with **Amazon Bedrock** and **Amazon Bedrock AgentCore**, supporting foundation models, managed prompts, and conversation state. Enterprise-grade authentication is enabled through OAuth 2.0 and JWT-based identity providers (such as **Amazon Cognito**), ensuring secure and scalable access for users, applications, and agents.
+The solution integrates natively with **Amazon Bedrock** and **Amazon Bedrock AgentCore**, supporting foundation models, managed prompts, and conversation state. Enterprise-grade authentication is enabled through OAuth 2.0 and JWT-based identity providers (such as **Amazon Cognito** or **Kong Identity**), ensuring secure and scalable access for users, applications, and agents.
 
 
 
@@ -174,19 +179,6 @@ To activate AI Semantic Caching:
 
 
 
-# Kong API Gateway and Docusign Extension Apps
-
-This repo describes how to configure Kong API Gateway to protect Docusing Extension Apps. The Reference Architecture is below:
-
-<img src="./static/images/architecture.png" width="1000" height="850"/>
-
-The main components are:
-* Konnect Control Plane: responsible for defining APIs and Policies and pushing them to the Kong API Gateway Data Plane.
-* Kong API Data Plane: responsible for protecting with Microservices implementing the Application logic with the Policies described in the Control Plane, such as Rate Limiting, Authentication, etc.
-* Kong Identity: plays the Identity Provider (IdP) role, implementing OAuth2 Grants, such as Authorization Code and Client Credentials.
-* DataIO Microservices: implement the actual Application.
-* Docusign Developer: creates and deploys the Docusign Extension App.
-* Docusign Maestro:
 
 The DataIO Microservices are protected by an OpenId Connect Grant, where the Docusign Extension App is responsible for hitting the Identity Provider, implemented by Kong Identity, to get an Access Token. The Access Token is injected to all requests sent to Kong Data Plane which validates the Access Token before routing the request to the actual DataIO Microservices.
 
