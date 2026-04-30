@@ -97,6 +97,7 @@ Before deploying, ensure you have an active Kong Konnect account. If you do not 
 For the deployment, ensure you have the following command line utilities installed:
 - [**Kong decK**](https://developer.konghq.com/deck/) CLI
 - [**AWS CLI**](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html)
+- [eksctl](https://github.com/eksctl-io/eksctl)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
 - [helm](https://helm.sh/docs/intro/install/)
 - [k9s](https://k9scli.io/)
