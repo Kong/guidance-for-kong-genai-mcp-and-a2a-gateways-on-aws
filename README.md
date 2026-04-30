@@ -30,12 +30,26 @@ The solution integrates natively with **Amazon Bedrock** and **Amazon Bedrock Ag
 
 
 ## The Why: Features and Benefits
-Without an AI connectivity strategy, there is no visibility, governance, or cost control. Kong AI Gateway serves as a complete enterprise solution for managing and standardizing interactions across your entire digital ecosystem.
-* **A Unified Control Plane for Agents and LLMs**: Proxies and governs all Agent-to-Agent (A2A) communication and LLM consumption through a single, standardized gateway. Maintain audit trails of every RPC call, including caller identity, capabilities invoked, and outcomes.
-* **AI Cost Optimization**: Stop margin erosion and implement robust AI Metering and Billing (M&B). Administrators can track token usage dynamically, configure usage-based billing, enforce quotas, and drastically reduce latency and costs using AI Semantic Caching (via **Amazon MemoryDB for Redis**).
-* **Multi-Provider Routing and Fallback**: Features a single API for seamless integration with multiple LLM providers. Handle standardized inputs/outputs across models (Amazon Bedrock, OpenAI, Anthropic, etc.) and establish intelligent load balancing, failover mechanisms, and fallback routing to ensure maximum uptime.
-* **Context Mesh & MCP Governance**: Protect your Model Context Protocol (MCP) servers and the data context your agents consume. Kong ensures only authorized agents can access sensitive APIs or invoke specific capabilities.
-* **Security and Compliance**: Protect against prompt injection and enforce content rules using the AI Prompt Guard and AI Prompt Decorator plugins. Enforce centralized authentication, rate limiting, and real-time observability across all AI traffic.
+This comprehensive platform delivers a unified enterprise solution for governing interactions across LLMs, MCP-enabled tools, and AI agents, enhanced by **Kong AI Gateway** and **AgentCore** as the execution backbone.
+
+At its core, **Kong LLM Gateway** provides a single, consistent API layer for multiple LLM providers (Amazon Bedrock, OpenAI, Anthropic, etc.) and others—standardizing request and response formats across text generation, embeddings, TTS (Text-To-Speach), STT (Speach-To-Text) and multimodal workloads. It abstracts provider-specific APIs while maintaining flexibility and portability.
+
+The **Kong Context Mesh and MCP Gateway** introduce a standardized interface for tools, plugins, and contextual data sources. This allows models and agents to dynamically discover and invoke external systems (such as APIs, databases, and enterprise services) in a secure and governed way, enabling composable and extensible AI applications.
+
+The **Agent Gateway** enables orchestration, routing, and governance of AI Agents. It supports advanced patterns such as multi-agent collaboration and Agent-to-Agent (A2A) communication, allowing agents to coordinate tasks, share context, and delegate execution while remaining within policy boundaries.
+
+**Bedrock AgentCore** complements this by acting as the managed execution layer for Agents and MCP Servers. It provides capabilities such as lifecycle management, tool execution, state handling, and scalable runtime environments for agents and workflows. This enables organizations to operationalize agent-based architectures with reliability, elasticity, and governance, without having to build custom orchestration engines from scratch.
+
+The platform enables centralized management of usage across users, teams, applications, and agents. Administrators can define budgets, enforce rate limits, restrict access to specific models or tools, and implement fine-grained routing and policy controls. Intelligent traffic management includes load balancing, automatic failover, retry strategies, and caching to optimize both performance and cost.
+
+Security and compliance are foundational. The solution integrates with **Amazon Bedrock Guardrails** and extends safety, validation, and policy enforcement across all LLM providers, MCP tools, and agent interactions. It supports secure credential handling, token-based authentication, and end-to-end authorization, ensuring that both human users and autonomous agents operate within defined constraints.
+
+Observability features provide deep visibility into LLM calls, MCP tool usage, and agent workflows, including logs, metrics, and traces. This enables debugging, auditing, performance tuning, and governance at scale.
+
+Cost optimization mechanisms include prompt and response caching, usage attribution across teams and agents, budget enforcement, and real-time monitoring of resource consumption.
+
+All functionality is accessible via APIs and an intuitive administrative UI, allowing operators to manage configurations and policies, while developers and users can test models, invoke tools, and interact with agents.
+
 
 
 ## Use Cases
@@ -93,10 +107,17 @@ You can customize how your Kong AI Gateway is deployed and accessed based on spe
 Before deploying, ensure you have an active Kong Konnect account. If you do not have one, you can [get started with a free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
 
 ### Prerequisite CLI Tools
-- Install [**Kong decK**](https://developer.konghq.com/deck/) CLI
-- Install AWS CLI
-- Install terraform CLI
-- If using Amazon EKS, install kubectl
+For the deployment, ensure you have the following command line utilities installed:
+- [**Kong decK**](https://developer.konghq.com/deck/) CLI
+- [**AWS CLI**](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html)
+- [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
+- [helm](https://helm.sh/docs/intro/install/)
+- [k9s](https://k9scli.io/)
+- [curl](https://curl.se/)
+- [jq](https://jqlang.org/)
+- [jwt-cli](https://github.com/mike-engel/jwt-cli)
+- [wget](https://www.gnu.org/software/wget/)
+
 
 ### Deployment Steps
 1. **Clone the Repository** and navigate to the deployment directory.
