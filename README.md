@@ -14,7 +14,7 @@ This implementation guide provides instructions to deploy the **Kong AI Gateway*
 
 It provides powerful features out-of-the-box, such as Semantic Caching, Semantic Routing across multi-providers, Agent-to-Agent (A2A) governance, Token-based Rate Limiting and advanced AI Cost Optimization (AI Metering and Billing).
 
-![Architecture Diagram](assets/images/konnect.png)
+![Architecture Diagram](assets/images/reference_architecture.png)
 
 The architecture extends beyond a traditional LLM proxy by incorporating the following complementary layers:
 
