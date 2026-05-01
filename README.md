@@ -1,4 +1,4 @@
-# Guidance for Multi-Agent, Multi-Provider Advanced AI Gateway on AWS
+# Guidance for Multi-Agent, Multi-Provider Advanced Kong AI Gateway on AWS
 
 ## Summary
 The guide outlines how organizations can build a unified gateway to securely access and orchestrate multiple Generative AI (GenAI) providers in addition to emerging architectural patterns such as Model Context Protocol (MCP) for standardized tool and context exchange, Agent-to-Agent (A2A) communication for distributed AI Agents while maintaining governance, observability, and scalability. These patterns enable more advanced use cases, including multi-agent collaboration, tool chaining, and dynamic decision-making across heterogeneous AI services.
