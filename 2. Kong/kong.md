@@ -322,6 +322,9 @@ X-Kong-Request-Id: 3c38636dfcb2140c62665b654455083c
 
 
 ### Delete CP/DP
+
+If you want to delete both CP and DP run:
+
 ```
 kubectl delete dataplane kong-aws-dp -n kong
 kubectl delete konnectextensions.konnect.konghq.com konnect-config-aws -n kong
