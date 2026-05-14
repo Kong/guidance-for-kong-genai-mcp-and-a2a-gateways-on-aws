@@ -1,6 +1,8 @@
 # Kong
 
-Now it's time to create the Konnect Control Plane and deploy the Data Plane in our EKS Cluster.
+Now it's time to create the Konnect Control Plane and deploy the Data Plane in our EKS Cluster. The connections made by the Kong Data Plane to consume AWS services, including for example Bedrock, AgentCore and Secrets Manager, are managed by [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html).
+
+Here's the policy creation we are going to use with **Pod Identity**.
 
 ## Pod Identity
 
@@ -28,6 +30,8 @@ aws iam create-policy \
 }'
 ```
 
+The **Pod Identity Association** relates a Kubernetes Service Account to an IAM Role/Policy. In our case, the SA is ``kaigateway-podid-sa``.
+
 ```
 kubectl delete namespace kong
 
@@ -36,6 +40,9 @@ kubectl create sa kaigateway-podid-sa -n kong
 ```
 
 ### Define PodIdentityAssociation
+
+Now, create the **Pod Identity** association:
+
 ```
 eksctl create podidentityassociation \
   --cluster kong313 \
@@ -47,6 +54,9 @@ eksctl create podidentityassociation \
 ```
 
 ## Kong Operator
+
+We are ready to deploy Kong now. Let's install **Kong Operator** which is responsible for creating the Control Plane and deploy the Data Plane.
+
 
 Install the [Kong Operator](https://developer.konghq.com/operator/)
 
