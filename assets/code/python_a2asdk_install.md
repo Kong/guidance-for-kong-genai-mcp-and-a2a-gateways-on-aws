@@ -12,12 +12,12 @@ uv venv --python 3.13
 source .venv/bin/activate
 ```
 
-### Install the A2A SDK
+#### Install the A2A SDK
 ```
 uv add uvicorn "a2a-sdk[all]" --python 3.13
 ```
 
-Make sure they are all installed
+#### Make sure they are all installed
 ```
 python3 --version
 python3 -c "import a2a; print('A2A SDK imported successfully')"
