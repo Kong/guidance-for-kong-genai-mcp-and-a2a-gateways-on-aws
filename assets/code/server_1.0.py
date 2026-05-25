@@ -1,10 +1,10 @@
 import uuid
-
-from starlette.applications import Starlette
 import uvicorn
 
-from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.events import EventQueue
+from starlette.applications import Starlette
+
+
+from a2a.server.agent_execution import AgentExecutor
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
 from a2a.server.routes.agent_card_routes import create_agent_card_routes
@@ -15,42 +15,47 @@ from a2a.types import (
     AgentCard,
     AgentInterface,
     AgentSkill,
-    TaskArtifactUpdateEvent,
+    # TaskArtifactUpdateEvent,
     TaskState,
 )
+
+from a2a.server.tasks import TaskUpdater
 from a2a.helpers import new_text_artifact, new_task
 
 
 class HelloWorldAgentExecutor(AgentExecutor):
-    async def execute(
-        self,
-        context: RequestContext,
-        event_queue: EventQueue,
-    ) -> None:
-        task = context.current_task or new_task(
-            task_id=context.task_id or str(uuid.uuid4()),
-            context_id=context.context_id or str(uuid.uuid4()),
-            state=TaskState.TASK_STATE_SUBMITTED,
-            history=[context.message] if context.message else None,
+    async def execute(self, context, event_queue): # -> None:
+        # message/send and message/stream both arrive here
+
+        # A2A separates task lifecycle from task output.
+        # 1. announce task exists / started
+        task = context.current_task
+        if task is None:
+            task = new_task(
+                task_id=context.task_id or str(uuid.uuid4()),
+                context_id=context.context_id or str(uuid.uuid4()),
+                state=TaskState.TASK_STATE_SUBMITTED,
+                # state=TaskState.TASK_STATE_COMPLETED,
+                history=[context.message] if context.message else None,
         )
         await event_queue.enqueue_event(task)
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
 
+        # 2. task output event (task produced content)
         result = "that's the response"
-
-        await event_queue.enqueue_event(
-            TaskArtifactUpdateEvent(
-                task_id=context.task_id,
-                context_id=context.context_id,
-                artifact=new_text_artifact(name='result', text=result),
-            )
+        await updater.add_artifact(
+            parts=new_text_artifact(
+                name="result",
+                text="that's the response",
+            ).parts,
+            name="result",
         )
+        await updater.complete()
 
-    async def cancel(
-        self,
-        context: RequestContext,
-        event_queue: EventQueue,
-    ) -> None:
+
+    async def cancel(self, context, event_queue): # -> None:
         raise Exception('cancel not supported')
+        
 
 
 if __name__ == '__main__':
@@ -71,6 +76,7 @@ if __name__ == '__main__':
             AgentInterface(
                 url='http://localhost:9999/a2a',
                 protocol_binding='JSONRPC',
+                # protocol_version='0.3',
                 protocol_version='1.0',
             ),
         ],
@@ -96,5 +102,4 @@ if __name__ == '__main__':
     ]
 
     app = Starlette(routes=routes)
-    # uvicorn.run(app, host='127.0.0.1', port=9999)
     uvicorn.run(app, host='0.0.0.0', port=9999)
