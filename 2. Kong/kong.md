@@ -41,16 +41,16 @@ kubectl create sa kaigateway-podid-sa -n kong
 
 ### Define PodIdentityAssociation
 
-Now, create the **Pod Identity** association:
+Now, create the **Pod Identity** association. Use your AWS account:
 
 ```
 eksctl create podidentityassociation \
-  --cluster kong313 \
+  --cluster kong314 \
   --region us-west-2 \
   --namespace kong \
   --service-account-name kaigateway-podid-sa \
   --role-name kaigateway-aws-podid-role \
-  --permission-policy-arns arn:aws:iam::481711488351:policy/bedrock-policy
+  --permission-policy-arns arn:aws:iam::<YOUR_AWS_ACCOUNT>:policy/bedrock-policy
 ```
 
 ## Kong Operator
