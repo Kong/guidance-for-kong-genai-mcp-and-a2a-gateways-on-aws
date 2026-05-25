@@ -71,7 +71,7 @@ if __name__ == '__main__':
             AgentInterface(
                 url='http://localhost:9999/a2a',
                 protocol_binding='JSONRPC',
-                protocol_version='0.3',
+                protocol_version='1.0',
             ),
         ],
         default_input_modes=['text'],
