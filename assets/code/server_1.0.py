@@ -35,7 +35,6 @@ class HelloWorldAgentExecutor(AgentExecutor):
                 task_id=context.task_id or str(uuid.uuid4()),
                 context_id=context.context_id or str(uuid.uuid4()),
                 state=TaskState.TASK_STATE_SUBMITTED,
-                # state=TaskState.TASK_STATE_COMPLETED,
                 history=[context.message] if context.message else None,
         )
         await event_queue.enqueue_event(task)
