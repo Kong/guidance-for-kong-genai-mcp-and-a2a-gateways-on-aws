@@ -101,4 +101,4 @@ if __name__ == '__main__':
     ]
 
     app = Starlette(routes=routes)
-    uvicorn.run(app, host='0.0.0.0', port=9999)
+    uvicorn.run(app, host='0.0.0.0', port=9000)
