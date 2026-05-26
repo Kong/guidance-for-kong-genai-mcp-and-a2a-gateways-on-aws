@@ -24,7 +24,7 @@ from a2a.helpers import new_text_artifact, new_task
 
 
 class HelloWorldAgentExecutor(AgentExecutor):
-    async def execute(self, context, event_queue): # -> None:
+    async def execute(self, context, event_queue):
         # message/send and message/stream both arrive here
 
         # A2A separates task lifecycle from task output.
