@@ -1,3 +1,5 @@
+import importlib.metadata; print("A2A SDK version:", importlib.metadata.version('a2a-sdk'))
+
 import uuid
 import uvicorn
 
@@ -24,7 +26,7 @@ from a2a.helpers import new_text_artifact, new_task
 
 
 class HelloWorldAgentExecutor(AgentExecutor):
-    async def execute(self, context, event_queue):
+    async def execute(self, context, event_queue): # -> None:
         # message/send and message/stream both arrive here
 
         # A2A separates task lifecycle from task output.
@@ -35,6 +37,7 @@ class HelloWorldAgentExecutor(AgentExecutor):
                 task_id=context.task_id or str(uuid.uuid4()),
                 context_id=context.context_id or str(uuid.uuid4()),
                 state=TaskState.TASK_STATE_SUBMITTED,
+                # state=TaskState.TASK_STATE_COMPLETED,
                 history=[context.message] if context.message else None,
         )
         await event_queue.enqueue_event(task)
@@ -70,10 +73,11 @@ if __name__ == '__main__':
         name='Hello World Agent',
         description='Just a hello world agent',
         version='1.0.0',
-        icon_url='http://localhost:9999/icon.png',
+        icon_url='http://localhost:9000/icon.png',
         supported_interfaces=[
             AgentInterface(
-                url='http://localhost:9999/a2a',
+                # url='http://localhost:9000/a2a',
+                url='http://localhost:9000/',
                 protocol_binding='JSONRPC',
                 # protocol_version='0.3',
                 protocol_version='1.0',
@@ -95,7 +99,8 @@ if __name__ == '__main__':
         *create_agent_card_routes(agent_card=agent_card),
         *create_jsonrpc_routes(
             request_handler=request_handler,
-            rpc_url='/a2a',
+            # rpc_url='/a2a',
+            rpc_url='/',
             enable_v0_3_compat=True,
         ),
     ]
