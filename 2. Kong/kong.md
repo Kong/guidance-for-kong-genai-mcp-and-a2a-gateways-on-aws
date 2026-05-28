@@ -173,7 +173,7 @@ spec:
      spec:
        containers:
        - name: proxy
-         image: kong/kong-gateway:3.14
+         image: kong/kong-gateway:3.14.0.3
  network:
    services:
      ingress:
