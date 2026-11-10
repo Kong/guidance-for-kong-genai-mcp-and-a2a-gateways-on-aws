@@ -51,7 +51,7 @@ Konnect manages any number of data planes from one control plane. The same route
 **8. AI-aware observability in one place.**
 Kong records token counts, cost, model, latency and consumer for each AI request in Konnect analytics, and can export traces and metrics over OpenTelemetry to the backend you choose. The AI A2A Proxy plugin adds A2A-specific metrics such as task metadata. The reference architecture also streams Kong metrics into CloudWatch, but this guide doesn't configure that yet.
 
-> **Note on scope.** Points 3–5 and 8 describe Kong capabilities that this guide's steps **don't configure yet**. The guide deploys the data plane, the A2A route to AgentCore and Kong Identity.
+> **Note on scope.** Points 3–5 and 8 describe Kong capabilities that this guide's steps **don't configure yet**. The guide deploys the data plane, the A2A route to AgentCore, an MCP server built from a REST API, and Kong Identity tokens protecting the A2A route.
 
 ## How Kong uses the AWS services you already pay for
 

@@ -13,8 +13,8 @@ You're probably already building GenAI on AWS with Bedrock models, AgentCore-hos
    - [Step 1: Build the AWS foundation](#step-1-build-the-aws-foundation)
    - [Step 2: Run Kong's data plane on EKS, managed from Konnect](#step-2-run-kongs-data-plane-on-eks-managed-from-konnect)
    - [Step 3: Put an AgentCore agent behind Kong's Agent (A2A) Gateway](#step-3-put-an-agentcore-agent-behind-kongs-agent-a2a-gateway)
-   - [Step 4: The MCP Gateway pattern, and a mocked API to build it on](#step-4-the-mcp-gateway-pattern-and-a-mocked-api-to-build-it-on)
-   - [Step 5: Kong Identity as the OAuth2 provider](#step-5-kong-identity-as-the-oauth2-provider)
+   - [Step 4: Turn a REST API into MCP tools with Kong's MCP Gateway](#step-4-turn-a-rest-api-into-mcp-tools-with-kongs-mcp-gateway)
+   - [Step 5: Protect the A2A route with Kong Identity](#step-5-protect-the-a2a-route-with-kong-identity)
 7. [Clean up](#clean-up)
 8. [Repo layout](#repo-layout)
 9. [Next steps and further reading](#next-steps-and-further-reading)
@@ -70,14 +70,16 @@ Deeper dives on each flow:
 
 ## What you'll build
 
-When you finish Steps 1–3 you'll have:
+When you finish Steps 1–5 you'll have:
 
 - An **EKS cluster** with the AWS Load Balancer Controller and EKS Pod Identity.
 - A **public HTTPS endpoint**, `kong-dp.<your domain>`, served by an NLB with an **ACM** certificate and a **Route 53** alias.
 - A **Kong data plane** on EKS, connected to a **Konnect control plane** named `kong-aws`, with AWS access through an **IAM role** rather than keys.
-- An **A2A agent running on Bedrock AgentCore**, reachable through Kong at `/a2a` by any A2A client without AWS credentials.
+- An **A2A agent running on Bedrock AgentCore**, reachable through Kong at `/a2a` without AWS credentials (Step 3).
+- An **MCP server on Kong** at `/mcp`, turning a REST API into two MCP tools that any MCP client can list and call (Step 4).
+- A **Kong Identity** OAuth2 authorization server, with the `/a2a` route accepting only valid, short-lived client-credentials tokens (Step 5).
 
-Steps 4 and 5 add a mocked API route and a **Kong Identity** OAuth2 authorization server with the client credentials flow. Both depend on decK files that aren't in this repo yet, so read the notes in those steps first.
+Steps 4 and 5 add to Kong's configuration without removing what came before, so all three routes work together at the end.
 
 > **What this guide does *not* configure yet.** The architecture includes the LLM Gateway to Bedrock, Bedrock Guardrails, MemoryDB for semantic caching, Secrets Manager for credentials and CloudWatch for Kong metrics. The IAM policy in Step 2 already grants the Bedrock, Guardrails and Secrets Manager permissions. This guide has **no deployment steps** for these pieces yet.
 
@@ -110,7 +112,7 @@ These are the command-line tools the steps use. Install each one from its own in
 
 | Tool | What it's for in this guide | Used in |
 |---|---|---|
-| [Kong decK](https://developer.konghq.com/deck/) | Pushes declarative Kong configuration (routes, plugins) to Konnect | Steps 3–5 |
+| [Kong decK](https://developer.konghq.com/deck/) | Pushes declarative Kong configuration (routes, plugins) to Konnect. Steps 4 and 5 need a version with `deck gateway apply` | Steps 3–5 |
 | [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html) | Creates IAM policies, Route 53 records, ACM certificates; inspects the NLB and AgentCore | Steps 1–3 |
 | [eksctl](https://github.com/eksctl-io/eksctl) | Creates the EKS cluster, add-ons and Pod Identity associations | Steps 1–2 |
 | [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) | Applies the Kong Operator resources and checks pods | Step 2 |
@@ -164,39 +166,35 @@ Run everything in **one terminal session**. Later steps reuse variables exported
 
 **What it does.** Runs a hello-world A2A agent locally, deploys it to AgentCore, then publishes it through Kong at `/a2a` using the AI A2A Proxy plugin.
 
-> **Before you run it:** the Kong test request uses the sample host `kong-dp.kong-demo.com`. Use your own `kong-dp.<your domain>`. Also, `deck gateway reset ... -f` deletes any existing Kong configuration on `kong-aws` before syncing.
+> **Before you run it:** the Kong test request uses the sample host `kong-dp.kong-demo.com`. Use your own `kong-dp.<your domain>`. This step starts from a clean slate: `deck gateway reset ... -f` deletes any existing Kong configuration on `kong-aws` before syncing.
 
 **Verify.** A plain, unsigned request to `https://kong-dp.<your domain>/a2a` returns an artifact whose text is `that's the response`.
 
-**Common problems.** `awscurl` returns 403 (run `aws configure`). Kong returns 401/403 from AgentCore (check the Pod Identity role). Kong returns 404 because a later step's `deck gateway reset` removed the route. See [Step 3 troubleshooting](docs/troubleshooting.md#step-3-a2a-and-agentcore).
+**Common problems.** `awscurl` returns 403 (run `aws configure`). Kong returns 401/403 from AgentCore (check the Pod Identity role). Kong returns 404 because the configuration hasn't reached the data plane yet. See [Step 3 troubleshooting](docs/troubleshooting.md#step-3-a2a-and-agentcore).
 
-### Step 4: The MCP Gateway pattern, and a mocked API to build it on
+### Step 4: Turn a REST API into MCP tools with Kong's MCP Gateway
 
 **Full doc:** [4-mcp-gateway.md](4-mcp-gateway.md)
 
-**Why this step.** Agents call tools over MCP. Routing those calls through Kong gives tool access the same authentication, limits and telemetry as model and agent traffic, instead of every agent holding credentials for every tool.
+**Why this step.** Agents call tools over MCP. Routing those calls through Kong gives tool access the same authentication, limits and telemetry as model and agent traffic, instead of every agent holding credentials for every tool. Most teams already have REST APIs; Kong can expose them as MCP tools without anyone writing an MCP server.
 
-**What it does.** The full doc walks through the MCP flow, including Kong's AI MCP Proxy plugin. The hands-on part publishes a **mocked REST API** with Kong's Mocking plugin. It doesn't configure MCP proxying itself.
+**What it does.** Publishes an MCP server on Kong at `/mcp`. Kong's AI MCP Proxy plugin turns two REST endpoints into two MCP tools, `check-inventory` and `list-orders`, backed by Kong's public echo API so you don't need a backend. You then initialize a session, list the tools and call one, the way an agent would. The configuration is added with `deck gateway apply`, so Step 3's `/a2a` route keeps working.
 
-> **Can't complete from this repo alone:** the decK file `kong_aws_mock.yaml` (and the `openapi.yml` it's built from) isn't in this repo yet. This also resets Step 3's configuration.
+**Verify.** Listing the tools returns `check-inventory` and `list-orders`, and calling `check-inventory` returns the echo of the REST request Kong made (`/anything/inventory?sku=KONG-123`).
 
-**Verify.** A request to `/api/dataio/getTypeNames` returns a `typeNames` list containing `CRM Contact` and `Sales Opportunity`.
+**Common problems.** Your decK doesn't have `deck gateway apply` (upgrade it). The MCP calls are rejected because of the session ID (re-run the initialize step). See [Step 4 troubleshooting](docs/troubleshooting.md#step-4-mcp-gateway).
 
-**Common problems.** See [Step 4 troubleshooting](docs/troubleshooting.md#step-4-mcp-gateway).
-
-### Step 5: Kong Identity as the OAuth2 provider
+### Step 5: Protect the A2A route with Kong Identity
 
 **Full doc:** [5-kong-identity-oauth2.md](5-kong-identity-oauth2.md)
 
-**Why this step.** Machine-to-machine traffic (agents calling agents and tools) needs short-lived, scoped tokens that the gateway can check, not shared static keys. Kong Identity is an OAuth2 authorization server built into Konnect. Amazon Cognito is the AWS-native alternative.
+**Why this step.** After Step 3, anyone who knows the `/a2a` URL can call your agent. Machine-to-machine traffic (agents calling agents and tools) needs short-lived, scoped tokens that the gateway can check, not shared static keys. Kong Identity is an OAuth2 authorization server built into Konnect. Amazon Cognito is the AWS-native alternative.
 
-**What it does.** Creates an authorization server, scope, custom claim and client-credentials client in Kong Identity. Then it adds the OpenID Connect plugin (introspection mode) to a route and walks through getting, decoding and introspecting a token by hand.
+**What it does.** Creates an authorization server, scope, custom claim and client-credentials client in Kong Identity, and walks through getting, decoding and introspecting a token by hand. Then it adds the OpenID Connect plugin (introspection mode) to Step 3's `a2a-route`, so Kong checks every token with Kong Identity before the call reaches AgentCore.
 
-> **Note:** this step's text still describes a DocuSign extension-app scenario, and its decK file `kong_docusign_openid_mock.yaml` isn't in this repo yet. The Kong Identity API calls and the token exercises below work without it. This step's `deck gateway reset` also removes earlier steps' configuration.
+**Verify.** A call to `/a2a` without a token returns `401 Unauthorized`, and the same call with a fresh token returns the agent's `that's the response` artifact.
 
-**Verify.** Introspecting the token, as the gateway would, shows that a fresh token returns `"active": true`. After the 60-second lifetime it returns `"active": false`.
-
-**Common problems.** `.data[0]` picks the wrong auth server or scope if your org has others. The token expires before you introspect it. See [Step 5 troubleshooting](docs/troubleshooting.md#step-5-kong-identity).
+**Common problems.** `.data[0]` picks the wrong auth server or scope if your org has others. The token expires (60 seconds) before you use it. See [Step 5 troubleshooting](docs/troubleshooting.md#step-5-kong-identity).
 
 ## Clean up
 
@@ -224,8 +222,8 @@ Check the Billing console a day later to confirm nothing is still running.
 ├── 1-eks-cluster.md                       # Step 1: EKS, Load Balancer Controller, Route 53, ACM
 ├── 2-kong-konnect-data-plane.md           # Step 2: IAM + Pod Identity, Kong Operator, Konnect CP and EKS DP, NLB, DNS
 ├── 3-a2a-agent-gateway-agentcore.md       # Step 3: A2A agent locally → AgentCore → behind Kong's AI A2A Proxy
-├── 4-mcp-gateway.md                       # Step 4: MCP flow explained; mocked API route
-├── 5-kong-identity-oauth2.md              # Step 5: Kong Identity OAuth2 server, client credentials, introspection
+├── 4-mcp-gateway.md                       # Step 4: MCP flow explained; REST API exposed as MCP tools
+├── 5-kong-identity-oauth2.md              # Step 5: Kong Identity OAuth2 server; tokens required on /a2a
 ├── code/a2a/                              # Step 3 sample agents and Python setup (server_1.py, client_1.py)
 ├── docs/
 │   ├── why-kong-on-aws.md                 # the AWS-first case for (and against) adding Kong
@@ -243,8 +241,8 @@ Check the Billing console a day later to confirm nothing is still running.
 ## Next steps and further reading
 
 - **Add the LLM Gateway to Bedrock, with Guardrails.** The IAM permissions are already in place. Kong's docs cover the [Bedrock provider](https://developer.konghq.com/ai-gateway/ai-providers/bedrock/) and the [AI AWS Guardrails plugin](https://developer.konghq.com/plugins/ai-aws-guardrails/).
-- **Expose tools over MCP.** See the [AI MCP Proxy plugin](https://developer.konghq.com/plugins/ai-mcp-proxy/), which can proxy existing MCP servers or turn REST APIs into MCP tools.
-- **Secure the A2A route.** Kong's guides show [key authentication](https://developer.konghq.com/how-to/secure-a2a-endpoints/) and [OpenID Connect](https://developer.konghq.com/how-to/secure-a2a-endpoints-with-oidc/) on A2A endpoints. Combine them with Step 5's Kong Identity tokens.
+- **Go further with MCP.** The [AI MCP Proxy plugin](https://developer.konghq.com/plugins/ai-mcp-proxy/) can also proxy existing MCP servers (for example, ones running on AgentCore) and combine several tool sets behind one endpoint. Protect the `/mcp` route from Step 4 with Kong's MCP OAuth2 plugin.
+- **More ways to secure A2A.** Kong's guides show [key authentication](https://developer.konghq.com/how-to/secure-a2a-endpoints/) and [OpenID Connect](https://developer.konghq.com/how-to/secure-a2a-endpoints-with-oidc/) on A2A endpoints, alongside the Kong Identity setup from Step 5.
 - **Token and cost budgets.** See the [AI Rate Limiting Advanced plugin](https://developer.konghq.com/plugins/ai-rate-limiting-advanced/).
 - **AWS references:** [Amazon Bedrock AgentCore](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/), [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html), [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/).
 - **Protocols:** the [A2A protocol](https://a2a-protocol.org/) and the [Model Context Protocol](https://modelcontextprotocol.io/).

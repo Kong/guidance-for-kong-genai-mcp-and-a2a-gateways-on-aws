@@ -27,7 +27,7 @@ This step builds that front door. You deploy a small A2A agent to AgentCore, the
 >
 > - **Hard-coded hostname.** The Kong test request and `client_1.py` use the sample domain `kong-dp.kong-demo.com`. Use `kong-dp.$AWS_DOMAIN` (your domain from Step 1) instead when you run them.
 > - **Two versions of the agent.** The agent code shown inline below is a simpler version of [`code/a2a/server_1.py`](code/a2a/server_1.py). The file adds middleware that logs request headers and infers the `A2A-Version` header from the request body. The AgentCore deployment copies `server_1.py`, so the file is what actually runs there.
-> - **decK replaces, it doesn't merge.** `deck gateway reset ... -f` deletes all existing configuration on the `kong-aws` control plane before `sync` applies `ai-a2a-proxy.yaml`. Step 4 and Step 5 do the same, so running them removes this step's route.
+> - **This step starts from a clean slate.** `deck gateway reset ... -f` deletes all existing configuration on the `kong-aws` control plane before `sync` applies `ai-a2a-proxy.yaml`. Steps 4 and 5 then add to it with `deck gateway apply`, which doesn't delete anything. If you re-run this step later, re-run the `apply` commands in Steps 4 and 5 afterwards.
 
 ---
 
@@ -809,7 +809,7 @@ That single response proves the whole chain: Kong on EKS received the call, the 
 
 - **`agentcore deploy` succeeds but `awscurl` returns 403.** `awscurl` signs with your local AWS credentials. Run `aws configure` first. Make sure those credentials are allowed to invoke the runtime.
 - **Kong returns 401/403 from AgentCore.** The Kong pod's IAM role needs `bedrock-agentcore:InvokeAgentRuntime` and `bedrock-agentcore:GetAgentCard`. Check that the Pod Identity association from Step 2 targets the `kaigateway-podid-sa` service account in the `kong` namespace.
-- **Kong returns 404 "no Route matched".** You may have run Step 4 or 5 already. Their `deck gateway reset` removes this route. Re-run this step's `deck gateway sync`.
+- **Kong returns 404 "no Route matched".** The configuration hasn't reached the data plane yet, or `deck gateway sync` failed. Re-run this step's `deck gateway sync` and check its output.
 - **`DECK_AGENTCORE_PATH` is empty.** `AGENTCORE_URL` wasn't exported in the same shell. Re-run the `export AGENTCORE_URL=...` command.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-3-a2a-and-agentcore).
 

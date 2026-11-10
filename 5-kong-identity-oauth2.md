@@ -1,10 +1,10 @@
-# Step 5: Kong Identity as the OAuth2 provider for machine-to-machine access
+# Step 5: Protect the A2A route with Kong Identity (OAuth2)
 
 [← Step 4](4-mcp-gateway.md) · **Step 5** · [README →](README.md)
 
 ## Why this step
 
-API keys are fine for a demo. Once agents call agents and tools across teams, you'll want short-lived, scoped tokens that you can introspect and revoke. In OAuth2 terms that's the **client credentials** grant: each agent or app has a client ID and secret, exchanges them for a token, and the gateway checks that token on every call.
+At the end of Step 3, anyone who knows the `/a2a` URL can call your AgentCore agent, and Kong pays for it with its own IAM role. API keys would help, but once agents call agents and tools across teams you'll want short-lived, scoped tokens that you can check and revoke. In OAuth2 terms that's the **client credentials** grant: each agent or app has a client ID and secret, exchanges them for a token, and the gateway checks that token on every call.
 
 You have options for the token issuer on AWS. **Amazon Cognito** is a common choice. This step uses **Kong Identity**, the OAuth2 authorization server built into Konnect, so tokens, scopes and gateway policy are managed in one place.
 
@@ -13,30 +13,23 @@ You have options for the token issuer on AWS. **Amazon Cognito** is a common cho
 1. Creates an **authorization server** in Kong Identity with the Konnect REST API (`AuthZ_Server_1`, audience `http://kong.dev`).
 2. Adds a **scope** (`scope1`) and a **custom claim** (`claim1`) that goes into tokens.
 3. Creates a **client** (`client1`) that may use the client credentials grant, with a 60-second token lifetime.
-4. Adds Kong's **OpenID Connect** plugin to a route, set to validate tokens by calling Kong Identity's **introspection** endpoint.
-5. Plays both sides by hand: gets a token as the client, decodes it with `jwt-cli`, then introspects it as the gateway would.
+4. Plays both sides by hand: gets a token as the client, decodes it with `jwt-cli`, then **introspects** it as the gateway will.
+5. Adds Kong's **OpenID Connect** plugin to Step 3's `a2a-route`, so Kong checks every token with Kong Identity before the call reaches AgentCore.
+6. Calls `/a2a` without a token (rejected with `401`) and with one (the agent answers).
 
-> **Read this before you run anything in this step**
->
-> - **Parts of this step describe a different scenario.** The section below is titled "Docusign Extension App - Production Time" and talks about a DocuSign extension app and Data IO services. The Kong Identity mechanics (auth server, scope, claim, client, token, introspection) don't depend on DocuSign and work as written. The route and decK file are specific to that scenario.
-> - **The decK file isn't in this repo.** `kong_docusign_openid_mock.yaml` isn't in this repo yet, so the `deck gateway sync` command can't run from this repo alone. The REST API calls and the token/introspection exercises can.
-> - **This wipes Step 3 and Step 4.** `deck gateway reset ... -f` deletes existing configuration on `kong-aws`.
+The plugin is added with `deck gateway apply`, which doesn't delete anything, so Step 4's `/mcp` route keeps working.
 
 ## Before you start
 
-- `PAT` is exported (Step 2). The API calls use the Konnect **US** region (`us.api.konghq.com`).
+- Step 3 is complete, so the `a2a-route` exists on `kong-aws`.
+- `PAT` and `AWS_DOMAIN` are exported (Step 2). The API calls use the Konnect **US** region (`us.api.konghq.com`).
 - `jwt-cli` is installed for `jwt decode`.
+
+> **Test before you rely on it.** The Kong Identity setup and token exercises are unchanged. Applying the OpenID Connect plugin to the A2A route is new and hasn't been run end to end against this guide's EKS and Konnect setup yet.
 
 ---
 
-# Docusign Extension App - Production Time
-
-Now, let's promote the **Extension App** to Production. That means we are going to add new components to our deployments:
-* Actual Data IO Services will be deployed so we can remove the **Kong Mocking Plugin**
-* Configure **Kong Identity** to play the Identity Provider role and implement the **Client Credentials Grant**
-* Configure the **Extension App** to integration with **Kong Identity**
-
-## Kong Identity
+# Set up Kong Identity
 
 ### Create the Authorization Server in Kong Identity
 
@@ -232,7 +225,7 @@ export CLIENT_ID=<YOUR_CLIENT_ID>
 export CLIENT_SECRET=<YOUR_CLIENT_SECRET>
 ```
 
-## Checking you Kong Identity Authorization Server
+## Check your Kong Identity Authorization Server
 
 Kong Identity provides the standard endpoint ```$ISSUER_URL/.well-known/openid-configuration``` where you can get these and several other Kong Identity configuration parameters.
 
@@ -244,53 +237,11 @@ curl -s $ISSUER_URL/.well-known/openid-configuration | jq
 
 You can also check the Konnect UI with your Authorization Server and its Clients, Scopes and Claims defined.
 
-## Kong OpenId Connect Plugin
-
-The [Kong OpenId Connect Plugin](https://developer.konghq.com/plugins/openid-connect/) is used to implement the **OAuth2 Client Credentials Grant** between the **Docusign Extension App** and **Kong API Gateway** itself. The **decK** declaration has been updated to add the plugin. The new file can be found [here](kong_docusign_openid_mock.yaml)
-
-The declaration applies the Plugin to the existing **Kong Route**, implementing the **Introspection Flow** to validate the Token issued by **Kong Identity** and injected to the Request by **Docusign Extension App**. Here's the new snippet:
-
-```
-routes:
-- name: docusign-route
-  paths:
-  - /
-  plugins:
-  - name: openid-connect
-    instance_name: openid-connect-docusign-kong-identity
-    enabled: true
-    config:
-      issuer: ${{ env "DECK_ISSUER" }}
-      client_id:
-      - ${{ env "DECK_CLIENT_ID" }}
-      client_secret:
-      - ${{ env "DECK_CLIENT_SECRET" }}
-      auth_methods:
-      - introspection
-      introspection_endpoint: ${{ env "DECK_KONG_IDENTITY_INTROSPECTION_URL" }}
-```
-
-### Submit the decK declaration to your Control Plane
-
-Before submiting the new declaration we have set the decK environment variables:
-
-```
-export DECK_ISSUER=$ISSUER_URL
-export DECK_KONG_IDENTITY_INTROSPECTION_URL=$ISSUER_URL/introspect
-export DECK_CLIENT_ID=$CLIENT_ID
-export DECK_CLIENT_SECRET=$CLIENT_SECRET
-```
-
-```
-deck gateway reset --konnect-control-plane-name kong-aws --konnect-token $PAT -f
-deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT kong_docusign_openid_mock.yaml
-```
-
-### Exploring the Token and Introspection Endpoints
+## Explore the Token and Introspection Endpoints
 
 To exercise the Introspection Endpoint, let's send some requests to Kong Identity, acting as the Consumer and the Gateway.
 
-#### Token Endpoint
+### Token Endpoint
 
 In the first request, we play the Consumer role, using the [**Client Credentials Grant**](https://oauth.net/2/grant-types/client-credentials/) to get our Access Token
 
@@ -343,7 +294,7 @@ You can check all tokens issued by a given Client ID:
 curl -sX GET "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/clients/$CLIENT_ID/tokens" -H "Authorization: Bearer $PAT" | jq
 ```
 
-#### Introspection Endpoint
+### Introspection Endpoint
 
 Now, playing the Gateway role, we are going to consume the Introspection Endpoint asking the IdP to validate the Access Token. We use the [``-u`` **curl** option](https://curl.se/docs/manpage.html#-u) to specify our Client Id and Client Secret.
 
@@ -364,7 +315,7 @@ Here's a typical response. The “active” at the bottom says the plugin is sti
 }
 ```
 
-However, if you wait for the Access Token timeout (in our case, the defined it as 30 seconds), the Endpoint returns a different output saying so:
+However, if you wait for the Access Token timeout (60 seconds for this client), the Endpoint returns a different output saying so:
 
 ```
 {
@@ -372,19 +323,89 @@ However, if you wait for the Access Token timeout (in our case, the defined it a
 }
 ```
 
+## Protect the A2A route
+
+Now put that introspection check in front of your agent. Kong's [OpenID Connect plugin](https://developer.konghq.com/plugins/openid-connect/) in `introspection` mode asks Kong Identity "is this token active?" on every request, and rejects the request if it isn't. The plugin uses the same client ID and secret you just used for introspection.
+
+Set the values the decK file reads:
+
+```bash
+export DECK_ISSUER=$ISSUER_URL
+export DECK_KONG_IDENTITY_INTROSPECTION_URL=$ISSUER_URL/introspect
+export DECK_CLIENT_ID=$CLIENT_ID
+export DECK_CLIENT_SECRET=$CLIENT_SECRET
+```
+
+Write a decK file that attaches the plugin to Step 3's `a2a-route`:
+
+```bash
+cat > a2a-oidc.yaml << 'EOF'
+_format_version: "3.0"
+plugins:
+- name: openid-connect
+  route: a2a-route
+  instance_name: openid-connect-a2a-kong-identity
+  enabled: true
+  config:
+    issuer: ${{ env "DECK_ISSUER" }}
+    client_id:
+    - ${{ env "DECK_CLIENT_ID" }}
+    client_secret:
+    - ${{ env "DECK_CLIENT_SECRET" }}
+    auth_methods:
+    - introspection
+    introspection_endpoint: ${{ env "DECK_KONG_IDENTITY_INTROSPECTION_URL" }}
+EOF
+```
+
+Apply it. Like Step 4, `deck gateway apply` adds the plugin and leaves the rest of the configuration alone:
+
+```bash
+deck gateway apply --konnect-control-plane-name kong-aws --konnect-token $PAT a2a-oidc.yaml
+```
+
+### Call the A2A route without a token
+
+The same request that worked at the end of Step 3 is now rejected. The first line of the response should be `HTTP/1.1 401 Unauthorized`.
+
+```bash
+curl -si -X POST https://kong-dp.$AWS_DOMAIN/a2a \
+  -H "Content-Type: application/json" \
+  --data '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"How much is 100 USD in EUR?"}]}}}' | head -1
+```
+
+### Call it with a token
+
+Tokens last 60 seconds, so first get a fresh one by running the command under [Token Endpoint](#token-endpoint) again. Then send the same request with the token:
+
+```bash
+curl -s -X POST https://kong-dp.$AWS_DOMAIN/a2a \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"How much is 100 USD in EUR?"}]}}}' | jq
+```
+
+This time the agent on AgentCore answers with the `that's the response` artifact. Kong checked the token with Kong Identity, then signed the call to AgentCore with its IAM role, so the caller needs an OAuth2 token but never AWS credentials.
+
+> **What about `/mcp`?** MCP clients expect the MCP authorization flow, where the server tells the client where to get a token. Kong's MCP OAuth2 plugin handles that, and is the natural next step for protecting Step 4's route.
+
 ---
 
 ## Verify
 
 1. `curl -s $ISSUER_URL/.well-known/openid-configuration | jq` returns your authorization server's OpenID configuration.
-2. The client-credentials `TOKEN=$(...)` command produces a token, and `echo $TOKEN | jwt decode -` shows `"aud": ["http://kong.dev"]`, `"scope": "scope1"` and `"claim1": "claim1"`.
-3. The introspection call returns `"active": true`. Once the token's lifetime has passed, the same call returns `"active": false`. (The client is created with `access_token_duration: 60`; the text below mentions both 30 and 60 seconds.)
+2. `echo $TOKEN | jwt decode -` shows `"aud": ["http://kong.dev"]`, `"scope": "scope1"` and `"claim1": "claim1"`.
+3. A call to `/a2a` **without** a token returns `401 Unauthorized`, and the same call **with** a fresh token returns the agent's `that's the response` artifact.
 
 ## Common problems
 
 - **`AUTHZ_SERVER_ID` or `SCOPE_ID` picks the wrong item.** The commands take `.data[0]`, the first item in the list. If your Konnect org already has other auth servers or scopes, that may not be the one you just created.
-- **`deck gateway sync` can't find `kong_docusign_openid_mock.yaml`.** The file isn't in this repo (see the note at the top of this step).
-- **Introspection returns `"active": false` right away.** The token has a 60-second lifetime. Request a new one and introspect it straight away.
+- **A call with a token still returns `401`.** The token has probably expired (60-second lifetime). Get a new one and call straight away. If it still fails, introspect the token by hand as shown above to see whether Kong Identity considers it active.
+- **`deck gateway apply` reports that `a2a-route` doesn't exist.** Step 3's configuration isn't on `kong-aws`. Re-run Step 3's `deck gateway sync`, then Step 4's and this step's `apply` commands.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-5-kong-identity).
+
+## Tearing this step down
+
+Delete the `AuthZ_Server_1` authorization server in Konnect (**Identity**). Deleting the `kong-aws` control plane in [Clean up](README.md#clean-up) removes the plugin. Delete `a2a-oidc.yaml` from your working directory when you're done.
 
 [← Step 4](4-mcp-gateway.md) · **Step 5** · [README →](README.md)

@@ -7,7 +7,7 @@ Back to the [README](../README.md).
 ## Before you start: two things that catch everyone
 
 - **Run everything in one shell session.** Later steps rely on variables exported earlier (`AWS_DOMAIN`, `CERTIFICATE_ARN`, `HOSTED_ZONE_ID`, `PAT`, `AGENTCORE_URL`). If you open a new terminal, re-run the `export` commands.
-- **Each decK sync replaces the whole configuration.** Steps 3, 4 and 5 each run `deck gateway reset ... -f` before `deck gateway sync`, which deletes everything that was on the `kong-aws` control plane. Running a later step removes an earlier step's routes.
+- **Step 3 resets Kong's configuration; Steps 4 and 5 add to it.** Step 3 runs `deck gateway reset ... -f` before `deck gateway sync`, which deletes everything on the `kong-aws` control plane. Steps 4 and 5 use `deck gateway apply`, which only creates or updates. If you re-run Step 3, re-run the `apply` commands in Steps 4 and 5 afterwards.
 
 ## Step 1: EKS and networking
 
@@ -80,15 +80,27 @@ The sample request uses `kong-dp.kong-demo.com`. Use `kong-dp.<your domain>`.
 
 ## Step 4: MCP Gateway
 
-### `deck gateway sync` can't find kong_aws_mock.yaml
+### `deck gateway apply` is not a known command
 
-`kong_aws_mock.yaml` and the `openapi.yml` it's built from aren't in this repo yet, so this step can't be completed from this repo alone.
+Your decK version is older than the `apply` command. Upgrade decK, then check that `deck gateway apply --help` prints its usage.
+
+### `/mcp` returns 404 "no Route matched with those values"
+
+The configuration hasn't reached the data plane yet, or the apply failed. Re-run the `deck gateway apply` command and read its output, then check that `mcp-route` appears under the `kong-aws` gateway in Konnect.
+
+### The MCP calls are rejected after initialize
+
+MCP servers can issue a session ID in the `Mcp-Session-Id` response header, and expect later requests to send it back. Re-run the initialize command and the `export MCP_SESSION_ID=...` command, check that `echo $MCP_SESSION_ID` prints a value, then retry `tools/list`.
+
+### The response starts with `event:` and `data:` instead of plain JSON
+
+That's the `text/event-stream` form of an MCP response, and it's normal. The JSON-RPC message is on the `data:` line.
+
+### `tools/call` returns an error from the upstream
+
+The tools call `https://httpbin.konghq.com`, a public service. Check that the data plane can reach the internet (the NLB in Step 2 is internet-facing, and EKS nodes need outbound access through a NAT gateway or public subnet).
 
 ## Step 5: Kong Identity
-
-### `deck gateway sync` can't find kong_docusign_openid_mock.yaml
-
-This file isn't in this repo yet. The Kong Identity API calls and the token and introspection exercises still work without it.
 
 ### The wrong auth server or scope is picked up
 
@@ -97,3 +109,15 @@ The `export AUTHZ_SERVER_ID=...` and `export SCOPE_ID=...` commands take the fir
 ### Introspection says "active": false
 
 The token has expired. The client is created with a 60-second access token lifetime. Get a new token and introspect it straight away.
+
+### `/a2a` still returns 401 with a token
+
+Get a fresh token (it lasts 60 seconds) and call straight away. If it still fails, introspect that same token by hand as shown in Step 5. If Kong Identity reports `"active": true` but Kong still rejects it, check that `DECK_ISSUER`, `DECK_CLIENT_ID`, `DECK_CLIENT_SECRET` and `DECK_KONG_IDENTITY_INTROSPECTION_URL` were set when you ran `deck gateway apply`, then re-run it.
+
+### `deck gateway apply` says `a2a-route` doesn't exist
+
+The plugin attaches to the route created in Step 3. Re-run Step 3's `deck gateway sync`, then the `apply` commands in Steps 4 and 5.
+
+### `/a2a` returns 401 without a token
+
+That's the expected result once Step 5 is applied. Every call now needs a valid Kong Identity token.
