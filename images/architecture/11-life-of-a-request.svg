@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 520" width="1240" height="520" role="img" aria-labelledby="t d" font-family="Helvetica, Arial, sans-serif">
+<title id="t">Life of a request through Kong on AWS</title><desc id="d">Numbered path: 1 client or agent calls kong-dp domain; 2 Route 53 resolves to the NLB; 3 NLB terminates TLS with the ACM certificate; 4 Kong data plane pod on EKS matches the route and runs plugins; 5 Kong gets AWS credentials from its Pod Identity IAM role; 6 AgentCore runs the agent or Bedrock runs the model; 7 response returns the same way. Konnect sends configuration and receives analytics; AgentCore writes logs to CloudWatch.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs>
+<rect width="1240" height="520" fill="#FFFFFF"/>
+<text x="620" y="34" text-anchor="middle" font-size="20" fill="#1D1F24" font-weight="bold">Life of a request (the A2A call from Step 3)</text>
+<rect x="20" y="190" width="150" height="110" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="95.0" y="231.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">1. Client / agent</text>
+<text x="95.0" y="249.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">https://kong-dp.</text>
+<text x="95.0" y="267.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">&lt;domain&gt;/a2a</text>
+<rect x="190" y="190" width="150" height="110" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="265.0" y="231.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">2. Route 53</text>
+<text x="265.0" y="249.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">alias record</text>
+<text x="265.0" y="267.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">→ NLB</text>
+<rect x="360" y="190" width="170" height="110" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="445.0" y="231.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">3. Network Load</text>
+<text x="445.0" y="249.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Balancer</text>
+<text x="445.0" y="267.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">TLS with ACM cert</text>
+<rect x="560" y="190" width="210" height="110" rx="8" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5"/>
+<text x="665.0" y="222.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">4. Kong data plane</text>
+<text x="665.0" y="240.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">(pod on EKS)</text>
+<text x="665.0" y="258.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">match /a2a route,</text>
+<text x="665.0" y="276.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">run plugins</text>
+<rect x="800" y="190" width="190" height="110" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="895.0" y="231.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">5. IAM role</text>
+<text x="895.0" y="249.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">via EKS Pod Identity</text>
+<text x="895.0" y="267.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">(no static keys)</text>
+<rect x="1020" y="190" width="200" height="110" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="1120.0" y="222.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">6. Bedrock AgentCore</text>
+<text x="1120.0" y="240.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">runs the agent</text>
+<text x="1120.0" y="258.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">(or Bedrock + Guardrails</text>
+<text x="1120.0" y="276.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">for LLM calls)</text>
+<line x1="170" y1="230" x2="190" y2="230" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="340" y1="230" x2="360" y2="230" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="530" y1="230" x2="560" y2="230" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="770" y1="230" x2="800" y2="230" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="990" y1="230" x2="1020" y2="230" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="1120" y1="300" x2="1120" y2="360" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="1120" y1="360" x2="95" y2="360" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="95" y1="360" x2="95" y2="300" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="620" y="385" text-anchor="middle" font-size="13" fill="#333" font-weight="bold">7. The response travels back through Kong and the NLB to the caller</text>
+<rect x="545" y="60" width="240" height="70" rx="8" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="665.0" y="82.2" text-anchor="middle" font-size="12" font-weight="bold" fill="#1D1F24">Kong Konnect control plane</text>
+<text x="665.0" y="99.2" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24">config down · analytics up</text>
+<text x="665.0" y="116.2" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24">(not in the request path)</text>
+<line x1="665" y1="130" x2="665" y2="190" stroke="#333" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#a)" marker-start="url(#a)"/>
+<rect x="1000" y="60" width="220" height="70" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="1110.0" y="82.2" text-anchor="middle" font-size="12" font-weight="bold" fill="#1D1F24">Amazon CloudWatch</text>
+<text x="1110.0" y="99.2" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24">AgentCore runtime logs</text>
+<text x="1110.0" y="116.2" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24">(aws logs tail, Step 3)</text>
+<line x1="1120" y1="190" x2="1110" y2="130" stroke="#333" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="620" y="440" text-anchor="middle" font-size="12" fill="#333">Policies that can run at step 4: key auth or OpenID Connect (Kong Identity, Step 5), AI rate limiting by tokens or cost,</text>
+<text x="620" y="460" text-anchor="middle" font-size="12" fill="#333">AI AWS Guardrails, AI A2A / MCP proxy, OpenTelemetry export. This guide configures the AI A2A Proxy; the others are listed for context.</text>
+<text x="620" y="500" text-anchor="middle" font-size="12" fill="#333" font-style="italic">Solid arrows: request traffic. Dashed arrows: management or telemetry, never prompts or responses.</text>
+</svg>

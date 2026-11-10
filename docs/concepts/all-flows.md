@@ -1,9 +1,11 @@
+> **Concept doc. No commands.** It shows LLM (red), MCP (blue) and A2A (gold) traffic sharing one Kong data plane on EKS. Back to the [README](../../README.md#architecture).
+
 # The Agentic AI Application
 
 
 This diagram presents a comprehensive AI Gateway architecture that combines LLM routing, MCP tool orchestration, and Agent-to-Agent (A2A) communication using Kong Gateway, AWS Bedrock AgentCore, and Amazon EKS.
 
-![All-Flows](../assets/images/all-flows.png)
+![All-Flows](../../images/architecture/05-all-flows.png)
 
 The design demonstrates how a single gateway layer can unify:
 

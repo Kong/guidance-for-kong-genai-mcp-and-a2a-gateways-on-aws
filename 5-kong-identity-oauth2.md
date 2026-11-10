@@ -1,3 +1,35 @@
+# Step 5: Kong Identity as the OAuth2 provider for machine-to-machine access
+
+[← Step 4](4-mcp-gateway.md) · **Step 5** · [README →](README.md)
+
+## Why this step
+
+API keys are fine for a demo. Once agents call agents and tools across teams, you'll want short-lived, scoped tokens that you can introspect and revoke. In OAuth2 terms that's the **client credentials** grant: each agent or app has a client ID and secret, exchanges them for a token, and the gateway checks that token on every call.
+
+You have options for the token issuer on AWS. **Amazon Cognito** is a common choice. This step uses **Kong Identity**, the OAuth2 authorization server built into Konnect, so tokens, scopes and gateway policy are managed in one place.
+
+## What it does, in plain English
+
+1. Creates an **authorization server** in Kong Identity with the Konnect REST API (`AuthZ_Server_1`, audience `http://kong.dev`).
+2. Adds a **scope** (`scope1`) and a **custom claim** (`claim1`) that goes into tokens.
+3. Creates a **client** (`client1`) that may use the client credentials grant, with a 60-second token lifetime.
+4. Adds Kong's **OpenID Connect** plugin to a route, set to validate tokens by calling Kong Identity's **introspection** endpoint.
+5. Plays both sides by hand: gets a token as the client, decodes it with `jwt-cli`, then introspects it as the gateway would.
+
+> **Read this before you run anything in this step**
+>
+> - **Parts of this step describe a different scenario.** The section below is titled "Docusign Extension App - Production Time" and talks about a DocuSign extension app and Data IO services. The Kong Identity mechanics (auth server, scope, claim, client, token, introspection) don't depend on DocuSign and work as written. The route and decK file are specific to that scenario.
+> - **The decK file isn't in this repo.** `kong_docusign_openid_mock.yaml` isn't in this repo yet, so the `deck gateway sync` command can't run from this repo alone. The REST API calls and the token/introspection exercises can.
+> - **This wipes Step 3 and Step 4.** `deck gateway reset ... -f` deletes existing configuration on `kong-aws`.
+> - **Two diagrams referenced below aren't in the repo yet** (`architecture2.png`, `kong_identity.png`). Their paths are listed in [images/README.md](images/README.md).
+
+## Before you start
+
+- `PAT` is exported (Step 2). The API calls use the Konnect **US** region (`us.api.konghq.com`).
+- `jwt-cli` is installed for `jwt decode`.
+
+---
+
 # Docusign Extension App - Production Time
 
 Now, let's promote the **Extension App** to Production. That means we are going to add new components to our deployments:
@@ -7,7 +39,7 @@ Now, let's promote the **Extension App** to Production. That means we are going 
 
 Here's the new architecture
 
-<img src="../static/images/architecture2.png">
+<img src="images/step5-identity/01-architecture2.png">
 
 ## Kong Identity
 
@@ -226,7 +258,7 @@ curl -s $ISSUER_URL/.well-known/openid-configuration | jq
 
 You can also check the Konnect UI with your Authorization Server and its Clients, Scopes and Claims defined:
 
-<img src="../static/images/kong_identity.png">
+<img src="images/step5-identity/02-kong-identity-auth-server.png">
 
 
 
@@ -235,7 +267,7 @@ You can also check the Konnect UI with your Authorization Server and its Clients
 
 ## Kong OpenId Connect Plugin
 
-The [Kong OpenId Connect Plugin](https://developer.konghq.com/plugins/openid-connect/) is used to implement the **OAuth2 Client Credentials Grant** between the **Docusign Extension App** and **Kong API Gateway** itself. The **decK** declaration has been updated to add the plugin. The new file can be found [here](../kong_docusign_openid_mock.yaml)
+The [Kong OpenId Connect Plugin](https://developer.konghq.com/plugins/openid-connect/) is used to implement the **OAuth2 Client Credentials Grant** between the **Docusign Extension App** and **Kong API Gateway** itself. The **decK** declaration has been updated to add the plugin. The new file can be found [here](kong_docusign_openid_mock.yaml)
 
 
 The declaration applies the Plugin to the existing **Kong Route**, implementing the **Introspection Flow** to validate the Token issued by **Kong Identity** and injected to the Request by **Docusign Extension App**. Here's the new snippet:
@@ -374,3 +406,28 @@ However, if you wait for the Access Token timeout (in our case, the defined it a
   "active": false
 }
 ```
+
+---
+
+## Verify
+
+1. `curl -s $ISSUER_URL/.well-known/openid-configuration | jq` returns your authorization server's OpenID configuration.
+2. The client-credentials `TOKEN=$(...)` command produces a token, and `echo $TOKEN | jwt decode -` shows `"aud": ["http://kong.dev"]`, `"scope": "scope1"` and `"claim1": "claim1"`.
+3. The introspection call returns `"active": true`. Once the token's lifetime has passed, the same call returns `"active": false`. (The client is created with `access_token_duration: 60`; the text below mentions both 30 and 60 seconds.)
+
+## What you should see
+
+<!-- TODO: add diagram: "architecture2.png" (referenced above, not yet in the repo). Shows the "production time" architecture with Kong Identity. -->
+*Image pending (`images/step5-identity/01-architecture2.png`): the "new architecture" diagram, referenced above but not yet in the repo.*
+
+<!-- TODO: capture screenshot: Konnect → Identity, authorization server "AuthZ_Server_1" showing its client "client1", scope "scope1" and claim "claim1" -->
+*Screenshot pending (`images/step5-identity/02-kong-identity-auth-server.png`): the `AuthZ_Server_1` authorization server in Konnect with its client, scope and claim.*
+
+## Common problems
+
+- **`AUTHZ_SERVER_ID` or `SCOPE_ID` picks the wrong item.** The commands take `.data[0]`, the first item in the list. If your Konnect org already has other auth servers or scopes, that may not be the one you just created.
+- **`deck gateway sync` can't find `kong_docusign_openid_mock.yaml`.** The file isn't in this repo (see the note at the top of this step).
+- **Introspection returns `"active": false` right away.** The token has a 60-second lifetime. Request a new one and introspect it straight away.
+- **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-5-kong-identity).
+
+[← Step 4](4-mcp-gateway.md) · **Step 5** · [README →](README.md)

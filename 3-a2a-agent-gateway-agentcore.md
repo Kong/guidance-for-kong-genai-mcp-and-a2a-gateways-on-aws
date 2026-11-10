@@ -1,8 +1,44 @@
+# Step 3: Put an AgentCore agent behind Kong's Agent (A2A) Gateway
+
+[← Step 2](2-kong-konnect-data-plane.md) · **Step 3** · [Step 4 →](4-mcp-gateway.md)
+
+## Why this step
+
+Amazon Bedrock AgentCore is a strong place to *run* agents. It gives you a managed runtime, scaling and IAM-signed (SigV4) invocation. What it doesn't give you on its own is one shared front door that **other agents** (inside AWS, in another cloud or on a laptop) can reach using a plain A2A call, with one set of policies, logs and metrics across all of them.
+
+This step builds that front door. You deploy a small A2A agent to AgentCore, then publish it through Kong at `https://kong-dp.<your domain>/a2a`. Kong's **AI A2A Proxy** plugin calls AgentCore for you, and the IAM role from Step 2 (`bedrock-agentcore:InvokeAgentRuntime`, `bedrock-agentcore:GetAgentCard`) authorizes it. Callers don't need AWS credentials, and AgentCore stays private to IAM.
+
+## What it does, in plain English
+
+1. **Explains** the A2A flow and Kong's plugins (diagram and background).
+2. **Runs a "hello world" A2A agent on your laptop** (`server_1.py`) and calls it directly, so you can see what A2A requests and responses look like.
+3. **Deploys the same agent to AgentCore** with the AgentCore CLI and calls it with SigV4-signed `awscurl`.
+4. **Publishes it through Kong.** A decK file creates a Kong service pointing at the AgentCore runtime, with the `ai-a2a-proxy` plugin handling AWS IAM auth. You then call it with plain `curl`.
+5. **Shows a second agent** (`client_1.py`) that discovers and talks to the first one through Kong.
+
+## Before you start
+
+- Steps 1 and 2 are complete, and `PAT` and `AWS_DOMAIN` are still exported.
+- Python with the A2A SDK, set up as described in [code/a2a/python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md) (uses `uv`).
+- Node.js/npm for the AgentCore CLI, plus [`awscurl`](https://pypi.org/project/awscurl/) and decK.
+- AgentCore available in `us-west-2` for your account.
+
+> **Things to know before you copy commands from this step**
+>
+> - **Hard-coded hostname.** The Kong test request and `client_1.py` use the sample domain `kong-dp.kong-demo.com`. Use `kong-dp.$AWS_DOMAIN` (your domain from Step 1) instead when you run them.
+> - **Two versions of the agent.** The agent code shown inline below is a simpler version of [`code/a2a/server_1.py`](code/a2a/server_1.py). The file adds middleware that logs request headers and infers the `A2A-Version` header from the request body. The AgentCore deployment copies `server_1.py`, so the file is what actually runs there.
+> - **decK replaces, it doesn't merge.** `deck gateway reset ... -f` deletes all existing configuration on the `kong-aws` control plane before `sync` applies `ai-a2a-proxy.yaml`. Step 4 and Step 5 do the same, so running them removes this step's route.
+
+![Diagram: how this step's request flows from a caller through Kong's A2A route to the agent on AgentCore](images/architecture/11-life-of-a-request.svg)
+*The request path you're building, from caller to AgentCore and back.*
+
+---
+
 # The A2A Flow
 
 This diagram illustrates a secure and observable Agent-to-Agent (A2A) communication architecture built using **AWS Bedrock AgentCore**, **Kong Agent Gateway**, and **Konnect** as the centralized control plane.
 
-![A2A-Flow](../assets/images/a2a-flow.png)
+![A2A-Flow](images/step3-a2a/01-a2a-flow.png)
 
 The design demonstrates how multiple AI agents can communicate with one another through standardized **A2A Protocol** and routes while Kong provides governance, authentication, telemetry, and operational control.
 
@@ -109,7 +145,7 @@ The lastest [A2A 1.0 Protocol Specification](https://a2a-protocol.org/v1.0.0/spe
 
 ## The first Agent
 
-To get started consider this [basic Agent](../assets/code/server_1.py).
+To get started consider this [basic Agent](code/a2a/server_1.py).
 
 ```
 import uuid
@@ -221,7 +257,7 @@ The Agent defines an AgentCard with has only one Skill. Here are some concise de
 * An [Agent Skill](https://a2a-protocol.org/v1.0.0/tutorials/python/3-agent-skills-and-card/#agent-skills) describes a specific capability or function the Agent can perform. It's a building block that tells clients what kinds of tasks the agent is good for.
 * An [Agent Card](https://a2a-protocol.org/v1.0.0/tutorials/python/3-agent-skills-and-card/#agent-card) is a JSON document that an A2A Server makes available, typically at a [.well-known/agent-card.json endpoint](https://a2a-protocol.org/v1.0.0/topics/agent-discovery/#1-well-known-uri). It's like a digital business card for the agent.
 
-To try it out, make sure you have [Python and the official A2A SDK](../assets/code/python_a2asdk_install.md) installed.
+To try it out, make sure you have [Python and the official A2A SDK](code/a2a/python-a2a-sdk-install.md) installed.
 
 Put the Agent to run:
 ```
@@ -376,6 +412,8 @@ https://github.com/a2aproject/a2a-inspector
 
 
 
+
+> **Checkpoint: the agent works locally.** The discovery call returns the Agent Card and the `SendMessage` / `message/send` calls return an artifact with the text `that's the response`. If both work, stop `server_1.py` with `Ctrl+C` and move on to AgentCore. (The A2A Inspector linked above is an optional UI for exploring A2A agents.)
 
 # Amazon Bedrock AgentCore
 
@@ -622,6 +660,20 @@ aws logs tail $LOGGROUPNAME \
 
 
 
+> **Checkpoint: the agent works on AgentCore.** `agentcore status` shows `Runtime: READY`, and the signed `awscurl` request returns the same `that's the response` artifact you saw locally. Make sure `AGENTCORE_URL` is exported in your shell, because the next section builds the Kong configuration from it.
+
+<!-- TODO: capture screenshot: Amazon Bedrock AgentCore console → Runtimes (us-west-2), runtime "agentcorekong" with status Ready and protocol A2A -->
+<!-- ![AgentCore console showing the agentcorekong runtime as Ready](images/step3-a2a/02-agentcore-runtime-ready.png) -->
+*Screenshot pending (`images/step3-a2a/02-agentcore-runtime-ready.png`): the `agentcorekong` runtime in the AgentCore console, status Ready.*
+
+**What the next section does.** The first command strips the host from `AGENTCORE_URL` and keeps only the path, which identifies your runtime. The `cat > ai-a2a-proxy.yaml` block writes a decK file that defines:
+
+- a Kong **service** `a2a-agentcore` pointing at `bedrock-agentcore.us-west-2.amazonaws.com` plus that path,
+- a **route** `a2a-route` that answers on `/a2a`,
+- the **`ai-a2a-proxy`** plugin, set to authenticate to AWS with IAM (`provider: "aws_iam"`) and to log A2A statistics and payloads.
+
+`deck gateway sync` then pushes it to the `kong-aws` control plane, and Konnect hands it to your data plane on EKS.
+
 # Kong Agent Gateway
 
 
@@ -704,6 +756,14 @@ curl -sX POST https://kong-dp.kong-demo.com/a2a \
      }' | jq
 ```
 
+
+> **Checkpoint: the agent works through Kong.** The `curl` to `/a2a` (with your own domain in place of `kong-demo.com`) returns the same artifact as the direct AgentCore call. This time no AWS signature is needed on the client side, because Kong signs the call to AgentCore using its Pod Identity role.
+
+<!-- TODO: capture screenshot: Konnect → Gateway Manager → kong-aws → Routes, showing "a2a-route" on path /a2a with the ai-a2a-proxy plugin enabled -->
+<!-- ![Konnect showing a2a-route with the ai-a2a-proxy plugin](images/step3-a2a/03-konnect-a2a-route.png) -->
+*Screenshot pending (`images/step3-a2a/03-konnect-a2a-route.png`): `a2a-route` and its `ai-a2a-proxy` plugin in Konnect.*
+
+The code below is the same as [`code/a2a/client_1.py`](code/a2a/client_1.py). Set it up as "Agent 2" in [python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md), and point `base_url` at your own domain. It resolves the Agent Card through Kong, then lets you chat with the AgentCore agent.
 
 # The second Agent
 
@@ -791,6 +851,41 @@ asyncio.run(main())
 
 
 
+
+---
+
+## Verify
+
+A plain, unsigned `curl -sX POST https://kong-dp.<your domain>/a2a ...` (the "Send a request" command under *Kong Agent Gateway*) returns a JSON-RPC result whose artifact text is `that's the response`.
+
+That single response proves the whole chain: Kong on EKS received the call, the `ai-a2a-proxy` plugin authenticated to AgentCore with the Pod Identity IAM role, and the agent on AgentCore answered.
+
+## What you should see
+
+![A2A flow: callers reach agents on AgentCore and elsewhere through Kong A2A routes, with Konnect managing configuration](images/step3-a2a/01-a2a-flow.png)
+*The A2A flow: every agent-to-agent call goes through a Kong-managed A2A route.*
+
+The two pending screenshots (AgentCore runtime Ready, and the route in Konnect) are listed in [images/README.md](images/README.md).
+
+## Common problems
+
+- **`agentcore deploy` succeeds but `awscurl` returns 403.** `awscurl` signs with your local AWS credentials. Run `aws configure` first. Make sure those credentials are allowed to invoke the runtime.
+- **Kong returns 401/403 from AgentCore.** The Kong pod's IAM role needs `bedrock-agentcore:InvokeAgentRuntime` and `bedrock-agentcore:GetAgentCard`. Check that the Pod Identity association from Step 2 targets the `kaigateway-podid-sa` service account in the `kong` namespace.
+- **Kong returns 404 "no Route matched".** You may have run Step 4 or 5 already. Their `deck gateway reset` removes this route. Re-run this step's `deck gateway sync`.
+- **`DECK_AGENTCORE_PATH` is empty.** `AGENTCORE_URL` wasn't exported in the same shell. Re-run the `export AGENTCORE_URL=...` command.
+- **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-3-a2a-and-agentcore).
+
+## Tearing this step down
+
+The "If you want to delete the Agent run" block (`agentcore remove all -y`, then `agentcore deploy`) removes the AgentCore runtime.
+
+[← Step 2](2-kong-konnect-data-plane.md) · **Step 3** · [Step 4 →](4-mcp-gateway.md)
+
+---
+
+## Appendix: working notes
+
+> Scratch notes kept for reference: a CLI version check, a link to AgentCore Gateway's MCP semantic search, and two `jq` experiments that list tool names from a chat request. They're not part of the deployment path.
 
 aws --version
 aws-cli/2.15.46 Python/3.11.8 Linux/5.10.215–203.850.amzn2.x86_64 exe/x86_64.ubuntu.24 prompt/off

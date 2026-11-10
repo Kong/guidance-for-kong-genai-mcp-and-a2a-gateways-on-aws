@@ -1,8 +1,10 @@
+> **Concept doc. No commands.** This guide has no deployment steps for the LLM Gateway yet. Back to the [README](../../README.md#architecture).
+
 # The LLM/GenAI Flow
 
 The diagram illustrates a LLM/GenAI request flow where an Agent running on **Amazon Bedrock AgentCore** delegates all LLM traffic through a centralized **Kong LLM Gateway** for governance, observability, security, and policy enforcement before reaching external model providers.
 
-![LLM-GenAI-Flow](../assets/images/llm-genai-flow.png)
+![LLM-GenAI-Flow](../../images/architecture/04-llm-genai-flow.png)
 
 The main steps of the flow are:
 1. User interacts with the AI Agent: A user sends a request to an Agent hosted inside **AgentCore**.

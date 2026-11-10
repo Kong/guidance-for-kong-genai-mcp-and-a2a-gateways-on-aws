@@ -1,9 +1,41 @@
+# Step 4: The MCP Gateway pattern, and a mocked API to build it on
+
+[← Step 3](3-a2a-agent-gateway-agentcore.md) · **Step 4** · [Step 5 →](5-kong-identity-oauth2.md)
+
+## Why this step
+
+Agents get useful when they can call tools. The **Model Context Protocol (MCP)** is the common way to describe and call those tools. If every agent connects straight to every MCP server, you get a mesh of credentials and no single place to see or limit tool usage. That mesh is hard to audit.
+
+The MCP Gateway pattern puts Kong between agents and tools. Agents talk MCP to Kong. Kong forwards to MCP servers, or turns ordinary REST APIs into MCP tools, and applies the same authentication, rate limiting and telemetry it applies to LLM and A2A traffic.
+
+## What it does, in plain English
+
+This step has two parts, and you should know what each one does before you start:
+
+1. **Concept (most of the page).** A walkthrough of the MCP flow diagram: agents in AgentCore, MCP servers and tools, Kong's **AI MCP Proxy** plugin, and the governance pieces around them.
+2. **Hands-on (end of the page).** Uses Kong's **Mocking** plugin to publish a fake REST API (`/api/dataio/...`, `/api/oauth/token`) from an OpenAPI spec. You don't need a real backend, so it's a fast way to confirm Kong is routing traffic.
+
+> **Read this before you run anything in this step**
+>
+> - **The decK file isn't in this repo.** The hands-on part syncs `kong_aws_mock.yaml`, built from `openapi.yml`. Neither file is in this repo yet, so you can't complete the hands-on part from this repo alone.
+> - **No MCP proxy configuration yet.** This guide doesn't include an `ai-mcp-proxy` configuration yet. The hands-on part publishes a plain mocked REST API. Exposing that API as MCP tools is the next logical step.
+> - **This wipes Step 3.** `deck gateway reset ... -f` deletes the A2A route from Step 3.
+> - The mocked endpoint names (`dataio`, `oauth/token`) and the "Development Time" wording appear to come from the same DocuSign extension-app scenario as Step 5.
+
+## Before you start
+
+- Step 2 is complete. `PAT` and `AWS_DOMAIN` are exported.
+- decK is installed.
+- You have `kong_aws_mock.yaml` (see the note above).
+
+---
+
 # The MCP Flow
 
 
 This diagram illustrates an AI-native architecture that combines AWS Bedrock AgentCore, Kong MCP Gateway, and MCP (Model Context Protocol) Servers to provide secure, observable, and governable access to tools and services for AI agents.
 
-![MCP-Flow](../assets/images/mcp-flow.png)
+![MCP-Flow](images/step4-mcp/01-mcp-flow.png)
 
 
 At a high level, the flow is divided into four major domains:
@@ -179,18 +211,18 @@ With the Kong API Gateway Data Plane deployed, we need to configure it exposing 
 
 With the **Mocking Plugin** we can have a much faster and easier deployment since we don't need to provide actual upstream services or applications.
 
-<img src="../static/images/development-time.png" width="1000" height="850"/>
+<img src="images/step4-mcp/02-development-time.png" width="1000" height="850"/>
 
 The **Mocking Plugin** takes an **OpenAPI** specification to mock and expose the application.
 
-The **OpenAPI Spec** we are going to use is [here](../openapi.yml).
+The **OpenAPI Spec** we are going to use is [here](openapi.yml).
 
 
 ## Kong Mocking Plugin
 
 The **decK** (Declarations for Kong) tool is used to configure the **Mocking Plugin**
 
-The **Mocking Plugin** configuration takes the **OpenAPI** specification and defines a **Kong Service** and a **Kong Route**. Note the **Kong Service** is ignored since the **Mocking Plugin** is going to manage the requests. The **decK** file can be found [here](../kong_aws_mock.yaml)
+The **Mocking Plugin** configuration takes the **OpenAPI** specification and defines a **Kong Service** and a **Kong Route**. Note the **Kong Service** is ignored since the **Mocking Plugin** is going to manage the requests. The **decK** file can be found [here](kong_aws_mock.yaml)
 
 
 ```
@@ -239,3 +271,25 @@ Should return this:
 }
 ```
 
+
+---
+
+## Verify
+
+`curl -s -X POST https://$DATA_PLANE_LB/api/dataio/getTypeNames | jq` returns the `typeNames` list with `CRM Contact` and `Sales Opportunity`, exactly as shown above. Kong answers from the Mocking plugin. No backend is involved.
+
+## What you should see
+
+![MCP flow: an agent in AgentCore calls MCP tools through a Kong MCP route; the AI MCP Proxy plugin forwards to services, REST APIs or external MCP servers](images/step4-mcp/01-mcp-flow.png)
+*How MCP traffic flows through Kong's MCP Gateway.*
+
+<!-- TODO: add diagram: "development-time.png" (referenced above, not yet in the repo). Shows the development-time architecture with the Kong Mocking plugin. -->
+*Image pending (`images/step4-mcp/02-development-time.png`): the "development time" diagram. The `<img>` tag above points to this path, so it shows as a broken image until the file is added.*
+
+## Common problems
+
+- **`deck gateway sync` says it can't find `kong_aws_mock.yaml`.** The file isn't in this repo (see the note at the top of this step).
+- **`deck gateway ...` fails with an authentication error.** `PAT` isn't exported, or it has expired. Generate a new one in Konnect as described in Step 2.
+- **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-4-mcp-gateway).
+
+[← Step 3](3-a2a-agent-gateway-agentcore.md) · **Step 4** · [Step 5 →](5-kong-identity-oauth2.md)

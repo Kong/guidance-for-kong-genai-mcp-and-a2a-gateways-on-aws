@@ -1,9 +1,11 @@
+> **Concept doc. No commands.** It explains how Bedrock AgentCore (agent runtime) and Kong AI Gateway (connectivity and governance) split the work. Back to the [README](../../README.md#architecture).
+
 # Kong AI Gateway and Amazon Bedrock AgentCore
 
 
 This architecture illustrates a production-ready AI and agentic application platform built on top of the **Kong Konnect Platform** and **Amazon Bedrock AgentCore**, integrating AI gateways, MCP-based tool orchestration, Agent-to-Agent communication, Observability, and centralized governance across distributed environments.
 
-![Kong AI Gateway & Amazon Bedrock AgentCore](../assets/images/kong_ai_gateway_aws_agent_core.png)
+![Kong AI Gateway & Amazon Bedrock AgentCore](../../images/architecture/03-kong-ai-gateway-agentcore.png)
 
 At the core of the design is the separation between the control plane and the distributed AI execution environments. The centralized **Konnect Control Plane** provides administrative governance, configuration management, policy distribution, observability integration, and metering capabilities for all AI traffic and agent interactions across the platform. Administrators use this layer to manage APIs, AI routing policies, security controls, telemetry, and operational governance consistently across clusters and environments.
 

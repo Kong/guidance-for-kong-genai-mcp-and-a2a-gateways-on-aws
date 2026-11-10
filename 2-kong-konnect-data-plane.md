@@ -1,3 +1,36 @@
+# Step 2: Run Kong's data plane on EKS, managed from Konnect
+
+[← Step 1](1-eks-cluster.md) · **Step 2** · [Step 3 →](3-a2a-agent-gateway-agentcore.md)
+
+## Why this step
+
+Kong works in two halves:
+
+- The **control plane** is where you define routes and policies. Here it's **Kong Konnect**, a SaaS service that Kong runs.
+- The **data plane** is the proxy that actually handles traffic. Here it runs **in your EKS cluster**.
+
+The data plane pulls configuration from Konnect over an outbound, mutually authenticated connection. Your prompts, model responses and agent messages go through the data plane in your VPC and **do not pass through Konnect**. Konnect receives configuration requests from you and telemetry from the data plane.
+
+This step is also where AWS IAM enters the picture. Kong doesn't get AWS access keys. Instead, an **EKS Pod Identity** association gives the Kong pods an IAM role whose policy lists exactly which Bedrock, AgentCore and Secrets Manager actions they may call. You can audit and revoke that access with the same IAM tools you use for everything else.
+
+## What it does, in plain English
+
+1. Creates an IAM policy (`bedrock-policy`) and binds it to a Kubernetes service account through Pod Identity.
+2. Installs the **Kong Operator**, a Kubernetes controller that creates Konnect objects and Kong deployments from YAML.
+3. Uses the operator to create a **control plane** named `kong-aws` in Konnect and a **data plane** named `kong-aws-dp` in EKS.
+4. Puts an internet-facing **NLB** in front of the data plane, with your ACM certificate from Step 1 on port 443.
+5. Points `kong-dp.<your domain>` at the NLB using a Route 53 alias record, then tests it.
+
+## Before you start
+
+- Step 1 is complete and `CERTIFICATE_ARN`, `AWS_DOMAIN` and `HOSTED_ZONE_ID` are still exported in your shell.
+- You have a Kong Konnect account. If you don't, start a [free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
+- Replace `<YOUR_AWS_ACCOUNT>` with your AWS account ID.
+
+> **Heads-up about the IAM policy below.** It allows `bedrock:ApplyGuardrail`, `bedrock:InvokeModel`, `secretsmanager:GetSecretValue` and related actions on `"Resource": "*"`. That is broader than you'd use in production. Scope it down to specific resource ARNs before using this in production. Only the AgentCore permissions are exercised by the later steps in this guide.
+
+---
+
 # Kong
 
 Now it's time to create the Konnect Control Plane and deploy the Data Plane in our EKS Cluster. The connections made by the Kong Data Plane to consume AWS services, including for example Bedrock, AgentCore and Secrets Manager, are managed by [EKS Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-identities.html).
@@ -80,6 +113,10 @@ kubectl logs -f $(kubectl get pod -n kong-system -o json | jq -r '.items[].metad
 ```
 
 
+> **Checkpoint.** The `kubectl logs` command above follows the operator's log. Press `Ctrl+C` to stop following it. The operator pod in `kong-system` should be Running before you continue.
+>
+> The block that creates the `kong` namespace starts with `kubectl delete namespace kong`. On a fresh cluster that line prints a "not found" error. You can ignore it, because the namespace is created on the next line.
+
 ## Konnect Personal Access Token (PAT)
 
 In order to start using the Kong Operator, you need to issue a Konnect Personal Access Token (PAT) or a System Access Token (SAT). To generate your PAT, go to Konnect UI, click on your initials in the upper right corner of the Konnect home page, then select "Personal Access Tokens." Click on "+ Generate Token," name your PAT, set its expiration time, and be sure to copy and save it as an environment variable also named as PAT. Konnect won’t display your PAT again.
@@ -128,7 +165,9 @@ EOF
 
 
 You can check your Data Plane in Konnect UI:
-![Control Plane](../assets/images/control_plane.png)
+![Control Plane](images/step2-kong/01-control-plane.png)
+
+*Konnect → API Gateway → Gateways, listing `kong-aws` as a self-managed control plane. The operator created it from the `KonnectGatewayControlPlane` resource above. The sentence above the image says "Data Plane", but the screenshot shows the control plane list; the data plane node appears after the next section.*
 
 ## Data Plane
 
@@ -212,8 +251,10 @@ kubectl logs -f $(kubectl get pod -n kong -o json | jq -r '.items[].metadata | s
 
 You should see your Data Plane in Konnect UI:
 
-![Data Plane](../assets/images/data_plane.png)
+![Data Plane](images/step2-kong/02-data-plane-connected.png)
 
+
+*Konnect → Gateway Manager → `kong-aws` → Data Plane Nodes, showing one node with status Connected and In Sync. This is the moment the EKS pod and Konnect are linked.*
 
 #### Check the Load Balancer Listener
 
@@ -337,3 +378,35 @@ kubectl delete konnectapiauthconfiguration konnect-api-auth-conf -n kong
 kubectl delete secret konnect-pat -n kong
 kubectl delete namespace kong
 ```
+---
+
+## Verify
+
+`curl -i https://kong-dp.$AWS_DOMAIN` returns **`HTTP/1.1 404 Not Found`** with a `Server: kong/...` header and the body `"no Route matched with those values"`.
+
+That 404 is the success signal. It proves DNS → NLB → TLS with your ACM certificate → the Kong pod on EKS all work, and that Kong answered. Kong returns 404 only because you haven't defined any routes yet. That happens in Steps 3 and 4.
+
+## What you should see
+
+![Konnect Gateway Manager listing the kong-aws control plane](images/step2-kong/01-control-plane.png)
+*The `kong-aws` control plane in Konnect.*
+
+![Konnect Data Plane Nodes page with one node Connected and In Sync](images/step2-kong/02-data-plane-connected.png)
+*The EKS data plane node connected to Konnect.*
+
+<!-- TODO: capture screenshot: EC2 console → Load Balancers, the NLB created for proxy-kong-aws, Listeners tab showing TCP/HTTP 80 and TLS/HTTPS 443 with the ACM certificate -->
+<!-- ![NLB listeners on ports 80 and 443](images/step2-kong/03-nlb-listeners.png) -->
+*Screenshot pending (`images/step2-kong/03-nlb-listeners.png`): the NLB's listeners on ports 80 and 443, with the ACM certificate on 443.*
+
+## Common problems
+
+- **`kubectl get ... dataplane` never shows Ready, or the node isn't in Konnect.** Use the two `kubectl logs` commands above (operator and data plane) to see why. A wrong or expired `PAT`, or a Konnect region other than `us` (the guide hard-codes `serverURL: us.api.konghq.com`), are common causes.
+- **`DATA_PLANE_LB` is empty.** The NLB takes a few minutes to provision after the `DataPlane` resource is applied. Wait and re-run the export.
+- **HTTPS fails but HTTP works.** `CERTIFICATE_ARN` was probably not set when you applied the `DataPlane` manifest, so the NLB has no certificate. Check the listeners with the `describe-listeners` command above.
+- **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-2-kong-konnect-data-plane).
+
+## Tearing this step down
+
+The "Delete CP/DP" block above removes the Kong objects. The [Clean up](README.md#clean-up) section in the README covers what else to remove.
+
+[← Step 1](1-eks-cluster.md) · **Step 2** · [Step 3 →](3-a2a-agent-gateway-agentcore.md)

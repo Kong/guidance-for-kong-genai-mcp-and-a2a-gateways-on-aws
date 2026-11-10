@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 640" width="1240" height="640" role="img" aria-labelledby="t d" font-family="Helvetica, Arial, sans-serif">
+<title id="t">AWS-only GenAI stack compared with AWS plus Kong</title><desc id="d">Left: three apps or agents each integrate separately with Bedrock, AgentCore and tools, each handling its own auth, limits and logging. Right: the same apps call one Kong data plane on EKS behind an NLB; Kong applies shared policy and calls the same AWS services using an IAM role; Konnect manages Kong configuration.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs>
+<rect width="1240" height="640" fill="#FFFFFF"/>
+<text x="620" y="36" text-anchor="middle" font-size="20" fill="#1D1F24" font-weight="bold">Same AWS services, two ways to connect to them</text>
+<rect x="20" y="60" width="580" height="560" rx="12" fill="none" stroke="#555B66" stroke-width="2"/>
+<text x="34" y="84" font-size="15" font-weight="bold" fill="#555B66">A. AWS only</text>
+<rect x="640" y="60" width="580" height="560" rx="12" fill="none" stroke="#555B66" stroke-width="2"/>
+<text x="654" y="84" font-size="15" font-weight="bold" fill="#555B66">B. AWS + Kong (this guide)</text>
+<rect x="45" y="110" width="150" height="60" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="120.0" y="144.9" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">Team A app</text>
+<rect x="45" y="205" width="150" height="60" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="120.0" y="239.9" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">Team B agent</text>
+<rect x="45" y="300" width="150" height="60" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="120.0" y="334.9" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">Agent outside AWS</text>
+<rect x="400" y="110" width="175" height="60" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="487.5" y="135.4" text-anchor="middle" font-size="14" font-weight="bold" fill="#1D1F24">Amazon Bedrock</text>
+<text x="487.5" y="154.4" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">(+ Guardrails)</text>
+<rect x="400" y="205" width="175" height="60" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="487.5" y="230.4" text-anchor="middle" font-size="14" font-weight="bold" fill="#1D1F24">Bedrock AgentCore</text>
+<text x="487.5" y="249.4" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">(agents, SigV4)</text>
+<rect x="400" y="300" width="175" height="60" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="487.5" y="334.9" text-anchor="middle" font-size="14" font-weight="bold" fill="#1D1F24">MCP tools / APIs</text>
+<line x1="195" y1="140" x2="400" y2="140" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="140" x2="400" y2="235" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="140" x2="400" y2="330" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="235" x2="400" y2="140" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="235" x2="400" y2="235" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="235" x2="400" y2="330" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="330" x2="400" y2="140" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="330" x2="400" y2="235" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="195" y1="330" x2="400" y2="330" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="45" y="420" width="530" height="120" rx="8" fill="#FDECEC" stroke="#B3261E" stroke-width="1.5"/>
+<text x="310.0" y="457.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">Each app or agent handles its own:</text>
+<text x="310.0" y="475.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">credentials for each service and provider,</text>
+<text x="310.0" y="493.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">rate limits and budgets, logging and tracing,</text>
+<text x="310.0" y="511.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">and its own SDK for every model provider.</text>
+<text x="45" y="575" text-anchor="start" font-size="12" fill="#333" font-style="italic">Fine for one team and one provider. Harder to govern as more teams and agents arrive.</text>
+<rect x="990" y="75" width="210" height="50" rx="8" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5" stroke-dasharray="6 4"/>
+<text x="1095.0" y="95.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">Kong Konnect</text>
+<text x="1095.0" y="113.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">control plane (SaaS)</text>
+<rect x="660" y="150" width="140" height="55" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="730.0" y="182.4" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">Team A app</text>
+<rect x="660" y="235" width="140" height="55" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="730.0" y="267.4" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">Team B agent</text>
+<rect x="660" y="320" width="140" height="55" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="730.0" y="352.4" text-anchor="middle" font-size="14" font-weight="normal" fill="#1D1F24">Agent outside AWS</text>
+<rect x="830" y="200" width="100" height="90" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="880.0" y="231.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">NLB</text>
+<text x="880.0" y="249.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">+ ACM</text>
+<text x="880.0" y="267.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">TLS</text>
+<line x1="800" y1="177" x2="830" y2="245" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="800" y1="262" x2="830" y2="245" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="800" y1="347" x2="830" y2="245" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="950" y="170" width="130" height="150" rx="8" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5"/>
+<text x="1015.0" y="206.7" text-anchor="middle" font-size="12" font-weight="bold" fill="#1D1F24">Kong data plane</text>
+<text x="1015.0" y="223.7" text-anchor="middle" font-size="12" font-weight="bold" fill="#1D1F24">on EKS</text>
+<text x="1015.0" y="240.7" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24"></text>
+<text x="1015.0" y="257.7" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24">auth, token limits,</text>
+<text x="1015.0" y="274.7" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24">guardrails, A2A/MCP,</text>
+<text x="1015.0" y="291.7" text-anchor="middle" font-size="12" font-weight="normal" fill="#1D1F24">telemetry</text>
+<line x1="930" y1="245" x2="950" y2="245" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<line x1="1085" y1="125" x2="1035" y2="170" stroke="#333" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#a)"/>
+<text x="1062" y="150" text-anchor="start" font-size="12" fill="#444">config</text>
+<text x="1100" y="350" text-anchor="middle" font-size="12" fill="#C76E00" font-weight="bold">IAM role via Pod Identity</text>
+<rect x="665" y="400" width="165" height="60" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="747.5" y="425.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">Amazon Bedrock</text>
+<text x="747.5" y="443.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">+ Guardrails</text>
+<line x1="1015" y1="320" x2="747" y2="400" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="855" y="400" width="165" height="60" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="937.5" y="434.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">Bedrock AgentCore</text>
+<line x1="1015" y1="320" x2="937" y2="400" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<rect x="1045" y="400" width="165" height="60" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="1127.5" y="425.55" text-anchor="middle" font-size="13" font-weight="bold" fill="#1D1F24">MCP tools / APIs,</text>
+<text x="1127.5" y="443.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">other providers</text>
+<line x1="1015" y1="320" x2="1127" y2="400" stroke="#333" stroke-width="1.6" marker-end="url(#a)"/>
+<text x="660" y="590" text-anchor="start" font-size="12" fill="#333" font-style="italic">Apps keep calling one endpoint. Policy lives in one place. AWS services are unchanged.</text>
+</svg>

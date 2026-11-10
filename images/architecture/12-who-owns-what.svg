@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 600" width="1240" height="600" role="img" aria-labelledby="t d" font-family="Helvetica, Arial, sans-serif">
+<title id="t">Who owns what: AWS-managed, Kong-managed, and your responsibility</title><desc id="d">Three columns. AWS-managed: EKS control plane, NLB, ACM certificate issuance and renewal, Route 53, Bedrock models, Bedrock Guardrails service, AgentCore runtime, IAM, CloudWatch. Kong-managed: Konnect control plane SaaS, Kong Identity service, Konnect analytics, Kong Gateway and Kong Operator releases. Your responsibility: EKS worker nodes and upgrades, IAM policy scope, Kong routes and plugin configuration, Konnect tokens and client secrets, agent code, domain and DNS records, cost monitoring and clean-up.</desc>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#333"/></marker></defs>
+<rect width="1240" height="600" fill="#FFFFFF"/>
+<text x="620" y="36" text-anchor="middle" font-size="20" fill="#1D1F24" font-weight="bold">Who owns what in this deployment</text>
+<rect x="20" y="60" width="390" height="46" rx="8" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="88.95" text-anchor="middle" font-size="17" font-weight="bold" fill="#1D1F24">AWS-managed</text>
+<rect x="35" y="120" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="144.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">EKS control plane</text>
+<rect x="35" y="170" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="194.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Network Load Balancer</text>
+<rect x="35" y="220" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="244.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">ACM certificate issuance &amp; renewal</text>
+<rect x="35" y="270" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="294.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Route 53 DNS service</text>
+<rect x="35" y="320" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="344.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Bedrock models</text>
+<rect x="35" y="370" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="394.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Bedrock Guardrails service</text>
+<rect x="35" y="420" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="444.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">AgentCore runtime</text>
+<rect x="35" y="470" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="494.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">IAM and Pod Identity service</text>
+<rect x="35" y="520" width="360" height="40" rx="6" fill="#FFF4E5" stroke="#C76E00" stroke-width="1.5"/>
+<text x="215.0" y="544.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">CloudWatch</text>
+<rect x="430" y="60" width="390" height="46" rx="8" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5"/>
+<text x="625.0" y="88.95" text-anchor="middle" font-size="17" font-weight="bold" fill="#1D1F24">Kong-managed</text>
+<rect x="445" y="120" width="360" height="40" rx="6" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5"/>
+<text x="625.0" y="144.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Konnect control plane (SaaS)</text>
+<rect x="445" y="170" width="360" height="40" rx="6" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5"/>
+<text x="625.0" y="194.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Kong Identity (OAuth2 server)</text>
+<rect x="445" y="220" width="360" height="40" rx="6" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5"/>
+<text x="625.0" y="244.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Konnect analytics</text>
+<rect x="445" y="270" width="360" height="40" rx="6" fill="#E8F5EE" stroke="#1B7A4B" stroke-width="1.5"/>
+<text x="625.0" y="294.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Kong Gateway &amp; Operator releases</text>
+<rect x="840" y="60" width="390" height="46" rx="8" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="88.95" text-anchor="middle" font-size="17" font-weight="bold" fill="#1D1F24">Your responsibility</text>
+<rect x="855" y="120" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="144.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">EKS worker nodes &amp; upgrades</text>
+<rect x="855" y="170" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="194.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Scope of the IAM policy</text>
+<rect x="855" y="220" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="244.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Kong routes, plugins, decK files</text>
+<rect x="855" y="270" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="294.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Konnect PAT &amp; client secrets</text>
+<rect x="855" y="320" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="344.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Agent code (server_1.py, …)</text>
+<rect x="855" y="370" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="394.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Domain &amp; DNS records</text>
+<rect x="855" y="420" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="444.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Guardrail definitions in Bedrock</text>
+<rect x="855" y="470" width="360" height="40" rx="6" fill="#EEF0FF" stroke="#3F4BB8" stroke-width="1.5"/>
+<text x="1035.0" y="494.55" text-anchor="middle" font-size="13" font-weight="normal" fill="#1D1F24">Cost monitoring &amp; clean-up</text>
+<text x="620" y="585" text-anchor="middle" font-size="12" fill="#333" font-style="italic">Kong runs in your account (data plane) but is managed from Konnect (control plane). AWS keeps owning the services Kong calls.</text>
+</svg>

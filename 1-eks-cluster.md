@@ -1,3 +1,33 @@
+# Step 1: Build the AWS foundation (EKS, load balancing, domain and TLS)
+
+[← README](README.md) · **Step 1** · [Step 2 →](2-kong-konnect-data-plane.md)
+
+## Why this step
+
+Kong's gateway has to run somewhere, and in this guide that place is your own AWS account. Running it on Amazon EKS means every AI request stays inside infrastructure you control, IAM governs it, and your existing AWS tooling can see it. Kong doesn't get its own island.
+
+This step builds only AWS resources. Nothing Kong-specific exists yet.
+
+## What it does, in plain English
+
+| You create | What it is for |
+|---|---|
+| An **EKS cluster** (`kong314`, one `c5.xlarge` node, `us-west-2`) | The Kubernetes environment where Kong's data plane will run in Step 2. |
+| The **EKS Pod Identity agent** add-on | Lets individual pods get IAM permissions without long-lived access keys. Kong uses this in Step 2 to call Bedrock, AgentCore and Secrets Manager. |
+| The **AWS Load Balancer Controller** | Watches Kubernetes for services that ask for a load balancer and creates a real AWS NLB for them. |
+| A **domain registered in Route 53** | Gives the gateway a stable public name. Optional if you already have a domain in Route 53. |
+| A **wildcard ACM certificate**, validated through DNS | Lets the NLB terminate HTTPS, so traffic to Kong is encrypted using a certificate AWS manages and renews. |
+
+## Before you start
+
+- AWS CLI configured for an account where you can create EKS clusters, IAM policies, Route 53 domains and ACM certificates.
+- `eksctl`, `kubectl`, `helm`, `jq` and `curl` installed (see the [Prerequisites](README.md#prerequisites) table).
+- Your AWS account ID, which you'll need in place of `<YOUR_AWS_ACCOUNT_ID>`.
+
+> **Read before you copy.** The commands below use the names `kong314`, `us-west-2` and `kong-aws-ai-guidance.com` as written. If you change any of them, change them in every later command too.
+
+---
+
 # AWS and EKS
 
 
@@ -65,6 +95,14 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n ku
 ```
 
 
+
+> **Checkpoint.** At this point the cluster exists and the Load Balancer Controller is installed in `kube-system`. A quick way to look is `k9s` (see Prerequisites): open the `kube-system` namespace and look for `aws-load-balancer-controller` pods in the Running state.
+>
+> The `helm install` above uses the chart reference `eks/aws-load-balancer-controller`. This guide doesn't include a `helm repo add eks ...` command. If Helm says it can't find the `eks` repository, see [Troubleshooting](docs/troubleshooting.md#helm-cannot-find-the-eks-chart-repository).
+
+<!-- TODO: capture screenshot: EKS console, Clusters list, cluster "kong314" in us-west-2 with Status "Active" -->
+<!-- ![EKS console showing the kong314 cluster as Active](images/step1-eks/01-eks-cluster-active.png) -->
+*Screenshot pending (`images/step1-eks/01-eks-cluster-active.png`): the EKS console showing cluster `kong314` as Active.*
 
 ## Amazon Route53 Public Domain
 
@@ -201,3 +239,29 @@ Type:  CNAME
 That's what you retrieved using the ``acm describe-certificate`` commands.
 
 **AWS Route 53** is the DNS Authority. Adding this entry to **Route 53** allows **ACM**, acting like a DNS client and querying **Route 53** using the ``Name`` of the CNAME entry, to verify if you actually control ``<YOUR_DOMAIN>``.
+
+---
+
+## Verify
+
+You're done with Step 1 when the certificate status command above prints `ISSUED`. That one check confirms the whole chain: the domain is registered, Route 53 is authoritative for it, the validation CNAME is in place, and ACM trusts it.
+
+Keep this terminal open. Step 2 uses the `AWS_DOMAIN`, `CERTIFICATE_ARN` and `HOSTED_ZONE_ID` variables you exported here.
+
+## What you should see
+
+<!-- TODO: capture screenshot: Route 53 console, Hosted zones, the zone for your domain showing NS, SOA and the ACM validation CNAME record -->
+<!-- ![Route 53 hosted zone with the ACM validation CNAME record](images/step1-eks/02-route53-hosted-zone.png) -->
+*Screenshot pending (`images/step1-eks/02-route53-hosted-zone.png`): the hosted zone with its NS, SOA and ACM validation CNAME records.*
+
+<!-- TODO: capture screenshot: ACM console in us-west-2, certificate for *.<your domain> with Status "Issued" -->
+<!-- ![ACM console showing the wildcard certificate as Issued](images/step1-eks/03-acm-certificate-issued.png) -->
+*Screenshot pending (`images/step1-eks/03-acm-certificate-issued.png`): the wildcard certificate in ACM with status Issued.*
+
+## Common problems
+
+- **The certificate stays `PENDING_VALIDATION`.** ACM can't see the CNAME yet. Check that the domain registration operation has finished (the `get-operation-detail` command) and that the CNAME was created in the right hosted zone.
+- **Route 53 domain commands fail in `us-west-2`.** The Route 53 Domains API is only available in `us-east-1`, which is why those commands pass `--region us-east-1`, while ACM and EKS use `us-west-2`.
+- **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-1-eks-and-networking).
+
+[← README](README.md) · **Step 1** · [Step 2 →](2-kong-konnect-data-plane.md)
