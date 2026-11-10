@@ -68,9 +68,6 @@ Deeper dives on each flow:
 - [All flows together](docs/concepts/all-flows.md): LLM, MCP and A2A traffic through one data plane.
 - [Solution overview](docs/solution-overview.md): summary, features, use cases and architecture steps.
 
-![Kong-powered multi-agent, multi-provider AI gateway on AWS: clients and agents on the left, the Konnect control plane and Kong AI Gateway data plane in the AWS Cloud, LLM providers and tools on the right, AWS infrastructure options below](images/architecture/02-konnect-capabilities.png)
-*Kong's capabilities mapped onto AWS.*
-
 ## What you'll build
 
 When you finish Steps 1–3 you'll have:
@@ -129,7 +126,7 @@ These are the command-line tools the steps use. Install each one from its own in
 
 ## Steps
 
-Each step below gives the **why**, a plain-English summary, a **Verify** check and what you should see. To run a step, open its **full doc**: it has every command in order, with expected output, optional checks and background.
+Each step below gives the **why**, a plain-English summary and a **Verify** check. To run a step, open its **full doc**: it has every command in order, with expected output, optional checks and background.
 
 Run everything in **one terminal session**. Later steps reuse variables exported earlier (`AWS_DOMAIN`, `CERTIFICATE_ARN`, `HOSTED_ZONE_ID`, `PAT`, `AGENTCORE_URL`).
 
@@ -145,12 +142,6 @@ Run everything in **one terminal session**. Later steps reuse variables exported
 
 **Verify.** The certificate status check at the end of the full doc prints `ISSUED`.
 
-**What you should see.**
-
-<!-- TODO: capture screenshot: ACM console in us-west-2, certificate for *.<your domain> with Status "Issued" -->
-<!-- ![ACM console showing the wildcard certificate as Issued](images/step1-eks/03-acm-certificate-issued.png) -->
-*Screenshot pending (`images/step1-eks/03-acm-certificate-issued.png`): the wildcard certificate in ACM with status Issued. All three planned Step 1 images are listed in [images/README.md](images/README.md).*
-
 **Common problems.** The certificate stays `PENDING_VALIDATION` (domain registration not finished, or CNAME in the wrong zone). `helm install` can't find the `eks` chart repository. See [Step 1 troubleshooting](docs/troubleshooting.md#step-1-eks-and-networking).
 
 ### Step 2: Run Kong's data plane on EKS, managed from Konnect
@@ -162,11 +153,6 @@ Run everything in **one terminal session**. Later steps reuse variables exported
 **What it does.** Creates the `bedrock-policy` IAM policy and binds it to Kong's service account, installs the Kong Operator, uses it to create the `kong-aws` control plane in Konnect and the `kong-aws-dp` data plane in EKS behind an internet-facing NLB with your ACM certificate, then points `kong-dp.<your domain>` at the NLB.
 
 **Verify.** A request to `https://kong-dp.<your domain>` returns a `404 Not Found` with `"no Route matched with those values"` and a `Server: kong/...` header is **success**. DNS, the NLB, TLS and the Kong pod all work. There are no routes yet.
-
-**What you should see.**
-
-![Konnect Data Plane Nodes page showing one EKS data plane node Connected and In Sync](images/step2-kong/02-data-plane-connected.png)
-*Your EKS data plane node, connected to the `kong-aws` control plane in Konnect.*
 
 **Common problems.** The data plane never becomes Ready (check the operator and data plane logs; the full doc has the commands). `DATA_PLANE_LB` is empty because the NLB is still provisioning. HTTPS fails because `CERTIFICATE_ARN` wasn't set. See [Step 2 troubleshooting](docs/troubleshooting.md#step-2-kong-konnect-data-plane).
 
@@ -182,15 +168,6 @@ Run everything in **one terminal session**. Later steps reuse variables exported
 
 **Verify.** A plain, unsigned request to `https://kong-dp.<your domain>/a2a` returns an artifact whose text is `that's the response`.
 
-**What you should see.**
-
-![A2A flow: agents inside and outside AgentCore communicate through Kong A2A routes on the Kong Agent Gateway data plane, managed by Konnect](images/step3-a2a/01-a2a-flow.png)
-*Every agent-to-agent call goes through a Kong-managed A2A route.*
-
-<!-- TODO: capture screenshot: Konnect → Gateway Manager → kong-aws → Routes, showing "a2a-route" on path /a2a with the ai-a2a-proxy plugin enabled -->
-<!-- ![Konnect showing a2a-route with the ai-a2a-proxy plugin](images/step3-a2a/03-konnect-a2a-route.png) -->
-*Screenshot pending (`images/step3-a2a/03-konnect-a2a-route.png`): `a2a-route` and its `ai-a2a-proxy` plugin in Konnect.*
-
 **Common problems.** `awscurl` returns 403 (run `aws configure`). Kong returns 401/403 from AgentCore (check the Pod Identity role). Kong returns 404 because a later step's `deck gateway reset` removed the route. See [Step 3 troubleshooting](docs/troubleshooting.md#step-3-a2a-and-agentcore).
 
 ### Step 4: The MCP Gateway pattern, and a mocked API to build it on
@@ -205,11 +182,6 @@ Run everything in **one terminal session**. Later steps reuse variables exported
 
 **Verify.** A request to `/api/dataio/getTypeNames` returns a `typeNames` list containing `CRM Contact` and `Sales Opportunity`.
 
-**What you should see.**
-
-![MCP flow: an agent in AgentCore calls MCP tools through a Kong MCP route; Kong's AI MCP Proxy plugin forwards to services, REST APIs or external MCP servers, with Konnect, OpenTelemetry and metering around it](images/step4-mcp/01-mcp-flow.png)
-*How MCP traffic flows through Kong's MCP Gateway.*
-
 **Common problems.** See [Step 4 troubleshooting](docs/troubleshooting.md#step-4-mcp-gateway).
 
 ### Step 5: Kong Identity as the OAuth2 provider
@@ -223,12 +195,6 @@ Run everything in **one terminal session**. Later steps reuse variables exported
 > **Note:** this step's text still describes a DocuSign extension-app scenario, and its decK file `kong_docusign_openid_mock.yaml` isn't in this repo yet. The Kong Identity API calls and the token exercises below work without it. This step's `deck gateway reset` also removes earlier steps' configuration.
 
 **Verify.** Introspecting the token, as the gateway would, shows that a fresh token returns `"active": true`. After the 60-second lifetime it returns `"active": false`.
-
-**What you should see.**
-
-<!-- TODO: capture screenshot: Konnect → Identity, authorization server "AuthZ_Server_1" showing its client "client1", scope "scope1" and claim "claim1" -->
-<!-- ![Kong Identity authorization server in Konnect with its client, scope and claim](images/step5-identity/02-kong-identity-auth-server.png) -->
-*Screenshot pending (`images/step5-identity/02-kong-identity-auth-server.png`): the authorization server in Konnect with its client, scope and claim.*
 
 **Common problems.** `.data[0]` picks the wrong auth server or scope if your org has others. The token expires before you introspect it. See [Step 5 troubleshooting](docs/troubleshooting.md#step-5-kong-identity).
 
