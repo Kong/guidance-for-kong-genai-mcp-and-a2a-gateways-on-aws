@@ -90,7 +90,7 @@ You don't need deep Kubernetes knowledge. Every Kubernetes command is copy-paste
 | You are… | Read this first | Then |
 |---|---|---|
 | **Cloud architect** | [Why Kong on AWS](docs/why-kong-on-aws.md), [Architecture](#architecture) | [docs/concepts/](docs/concepts/) for the LLM, MCP and A2A flows |
-| **Security lead** | Step 2's IAM policy and Pod Identity section, [Step 5](5-kong-identity-oauth2.md) (OAuth2 tokens and introspection) | The "who owns what" diagram in [docs/why-kong-on-aws.md](docs/why-kong-on-aws.md#who-owns-what) |
+| **Security lead** | Step 2's IAM policy and Pod Identity section, [Step 5](5-kong-identity-oauth2.md) (OAuth2 tokens and introspection) | The "who owns what" table in [docs/why-kong-on-aws.md](docs/why-kong-on-aws.md#who-owns-what) |
 | **FinOps / IT lead** | [What you'll build](#what-youll-build) (cost estimate), [Why Kong on AWS](docs/why-kong-on-aws.md#where-the-gaps-show-up-in-practice) (token and cost budgets) | [Clean up](#clean-up) |
 | **Platform engineer** | [Prerequisites](#prerequisites), then Steps 1–5 in order | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
@@ -236,8 +236,8 @@ Check the Billing console a day later to confirm nothing is still running.
 │   └── concepts/                          # architecture write-ups: AgentCore, LLM flow, all flows
 └── images/
     ├── architecture/                      # reference architecture and overview diagrams
-    ├── step2-kong/ … step5-identity/      # per-step screenshots (numbered)
-    └── README.md                          # image conventions and screenshots still to capture
+    ├── step3-a2a/, step4-mcp/             # A2A and MCP flow diagrams
+    └── README.md                          # image conventions and index
 ```
 
 ## Next steps and further reading

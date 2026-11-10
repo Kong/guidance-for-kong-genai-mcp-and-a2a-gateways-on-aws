@@ -21,7 +21,6 @@ You have options for the token issuer on AWS. **Amazon Cognito** is a common cho
 > - **Parts of this step describe a different scenario.** The section below is titled "Docusign Extension App - Production Time" and talks about a DocuSign extension app and Data IO services. The Kong Identity mechanics (auth server, scope, claim, client, token, introspection) don't depend on DocuSign and work as written. The route and decK file are specific to that scenario.
 > - **The decK file isn't in this repo.** `kong_docusign_openid_mock.yaml` isn't in this repo yet, so the `deck gateway sync` command can't run from this repo alone. The REST API calls and the token/introspection exercises can.
 > - **This wipes Step 3 and Step 4.** `deck gateway reset ... -f` deletes existing configuration on `kong-aws`.
-> - **Two diagrams referenced below aren't in the repo yet** (`architecture2.png`, `kong_identity.png`). Their paths are listed in [images/README.md](images/README.md).
 
 ## Before you start
 
@@ -36,10 +35,6 @@ Now, let's promote the **Extension App** to Production. That means we are going 
 * Actual Data IO Services will be deployed so we can remove the **Kong Mocking Plugin**
 * Configure **Kong Identity** to play the Identity Provider role and implement the **Client Credentials Grant**
 * Configure the **Extension App** to integration with **Kong Identity**
-
-Here's the new architecture
-
-<img src="images/step5-identity/01-architecture2.png">
 
 ## Kong Identity
 
@@ -87,7 +82,6 @@ curl -sX GET "https://us.api.konghq.com/v1/auth-servers" \
 
 Get the AuthZ Server Id:
 
-
 ```
 export AUTHZ_SERVER_ID=$(curl -sX GET "https://us.api.konghq.com/v1/auth-servers" -H "Authorization: Bearer $PAT" | jq -r '.data[0].id')
 ```
@@ -97,8 +91,6 @@ Get the Issuer URL:
 ```
 export ISSUER_URL=$(curl -sX GET "https://us.api.konghq.com/v1/auth-servers" -H "Authorization: Bearer $PAT" | jq -r '.data[0].issuer')
 ```
-
-
 
 ### Configure the AuthZ server with scopes
 
@@ -138,12 +130,9 @@ Export your scope ID:
 export SCOPE_ID=$(curl -sX GET "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/scopes" -H "Authorization: Bearer $PAT" | jq -r '.data[0].id')
 ```
 
-
-
 ### Configure the AuthZ server with custom claims
 
 Configure a custom claim using the [``/v1/auth-servers/$AUTHZ_SERVER_ID/claims``](https://developer.konghq.com/api/konnect/kong-identity/v1/#/operations/createAuthServerClaim) endpoint. A custom claim can be include in the tokens or inside a scope.
-
 
 ```
 curl -sX POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/claims" \
@@ -243,32 +232,21 @@ export CLIENT_ID=<YOUR_CLIENT_ID>
 export CLIENT_SECRET=<YOUR_CLIENT_SECRET>
 ```
 
-
 ## Checking you Kong Identity Authorization Server
 
 Kong Identity provides the standard endpoint ```$ISSUER_URL/.well-known/openid-configuration``` where you can get these and several other Kong Identity configuration parameters.
-
 
 ```
 curl -s $ISSUER_URL/.well-known/openid-configuration | jq
 ```
 
-
 ### Kong Identity User Interface
 
-You can also check the Konnect UI with your Authorization Server and its Clients, Scopes and Claims defined:
-
-<img src="images/step5-identity/02-kong-identity-auth-server.png">
-
-
-
-
-
+You can also check the Konnect UI with your Authorization Server and its Clients, Scopes and Claims defined.
 
 ## Kong OpenId Connect Plugin
 
 The [Kong OpenId Connect Plugin](https://developer.konghq.com/plugins/openid-connect/) is used to implement the **OAuth2 Client Credentials Grant** between the **Docusign Extension App** and **Kong API Gateway** itself. The **decK** declaration has been updated to add the plugin. The new file can be found [here](kong_docusign_openid_mock.yaml)
-
 
 The declaration applies the Plugin to the existing **Kong Route**, implementing the **Introspection Flow** to validate the Token issued by **Kong Identity** and injected to the Request by **Docusign Extension App**. Here's the new snippet:
 
@@ -292,8 +270,6 @@ routes:
       introspection_endpoint: ${{ env "DECK_KONG_IDENTITY_INTROSPECTION_URL" }}
 ```
 
-
-
 ### Submit the decK declaration to your Control Plane
 
 Before submiting the new declaration we have set the decK environment variables:
@@ -305,13 +281,10 @@ export DECK_CLIENT_ID=$CLIENT_ID
 export DECK_CLIENT_SECRET=$CLIENT_SECRET
 ```
 
-
 ```
 deck gateway reset --konnect-control-plane-name kong-aws --konnect-token $PAT -f
 deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT kong_docusign_openid_mock.yaml
 ```
-
-
 
 ### Exploring the Token and Introspection Endpoints
 
@@ -329,8 +302,6 @@ TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
   -d "client_secret=$CLIENT_SECRET" \
   -d "scope=scope1" | jq -r '.access_token')
 ```
-
-
 
 You can decode the Access Token with:
 
@@ -367,13 +338,10 @@ Token claims
 }
 ```
 
-
-
 You can check all tokens issued by a given Client ID:
 ```
 curl -sX GET "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/clients/$CLIENT_ID/tokens" -H "Authorization: Bearer $PAT" | jq
 ```
-
 
 #### Introspection Endpoint
 
@@ -385,7 +353,6 @@ curl -s -X POST "$ISSUER_URL/introspect" \
   -u "$CLIENT_ID:$CLIENT_SECRET" | jq
 ```
 
-
 Here's a typical response. The “active” at the bottom says the plugin is still good.
 
 ```
@@ -396,8 +363,6 @@ Here's a typical response. The “active” at the bottom says the plugin is sti
   "scope": "scope1"
 }
 ```
-
-
 
 However, if you wait for the Access Token timeout (in our case, the defined it as 30 seconds), the Endpoint returns a different output saying so:
 
@@ -414,14 +379,6 @@ However, if you wait for the Access Token timeout (in our case, the defined it a
 1. `curl -s $ISSUER_URL/.well-known/openid-configuration | jq` returns your authorization server's OpenID configuration.
 2. The client-credentials `TOKEN=$(...)` command produces a token, and `echo $TOKEN | jwt decode -` shows `"aud": ["http://kong.dev"]`, `"scope": "scope1"` and `"claim1": "claim1"`.
 3. The introspection call returns `"active": true`. Once the token's lifetime has passed, the same call returns `"active": false`. (The client is created with `access_token_duration: 60`; the text below mentions both 30 and 60 seconds.)
-
-## What you should see
-
-<!-- TODO: add diagram: "architecture2.png" (referenced above, not yet in the repo). Shows the "production time" architecture with Kong Identity. -->
-*Image pending (`images/step5-identity/01-architecture2.png`): the "new architecture" diagram, referenced above but not yet in the repo.*
-
-<!-- TODO: capture screenshot: Konnect → Identity, authorization server "AuthZ_Server_1" showing its client "client1", scope "scope1" and claim "claim1" -->
-*Screenshot pending (`images/step5-identity/02-kong-identity-auth-server.png`): the `AuthZ_Server_1` authorization server in Konnect with its client, scope and claim.*
 
 ## Common problems
 

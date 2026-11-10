@@ -32,11 +32,9 @@ This step has two parts, and you should know what each one does before you start
 
 # The MCP Flow
 
-
 This diagram illustrates an AI-native architecture that combines AWS Bedrock AgentCore, Kong MCP Gateway, and MCP (Model Context Protocol) Servers to provide secure, observable, and governable access to tools and services for AI agents.
 
 ![MCP-Flow](images/step4-mcp/01-mcp-flow.png)
-
 
 At a high level, the flow is divided into four major domains:
 
@@ -198,25 +196,13 @@ The overall architecture enables:
 
 It effectively turns Kong into an AI-native control and data plane for MCP ecosystems.
 
-
-
-
-
-
-
 With the Kong API Gateway Data Plane deployed, we need to configure it exposing an application. For the Development Time, one good option is to mock the application using the [**Kong Mocking Plugin**](https://developer.konghq.com/plugins/mocking/).
 
-
-
-
 With the **Mocking Plugin** we can have a much faster and easier deployment since we don't need to provide actual upstream services or applications.
-
-<img src="images/step4-mcp/02-development-time.png" width="1000" height="850"/>
 
 The **Mocking Plugin** takes an **OpenAPI** specification to mock and expose the application.
 
 The **OpenAPI Spec** we are going to use is [here](openapi.yml).
-
 
 ## Kong Mocking Plugin
 
@@ -224,12 +210,10 @@ The **decK** (Declarations for Kong) tool is used to configure the **Mocking Plu
 
 The **Mocking Plugin** configuration takes the **OpenAPI** specification and defines a **Kong Service** and a **Kong Route**. Note the **Kong Service** is ignored since the **Mocking Plugin** is going to manage the requests. The **decK** file can be found [here](kong_aws_mock.yaml)
 
-
 ```
 deck gateway reset --konnect-control-plane-name kong-aws --konnect-token $PAT -f
 deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT kong_aws_mock.yaml
 ```
-
 
 ## Test the Kong API Gateway Routes
 
@@ -271,20 +255,11 @@ Should return this:
 }
 ```
 
-
 ---
 
 ## Verify
 
 `curl -s -X POST https://$DATA_PLANE_LB/api/dataio/getTypeNames | jq` returns the `typeNames` list with `CRM Contact` and `Sales Opportunity`, exactly as shown above. Kong answers from the Mocking plugin. No backend is involved.
-
-## What you should see
-
-![MCP flow: an agent in AgentCore calls MCP tools through a Kong MCP route; the AI MCP Proxy plugin forwards to services, REST APIs or external MCP servers](images/step4-mcp/01-mcp-flow.png)
-*How MCP traffic flows through Kong's MCP Gateway.*
-
-<!-- TODO: add diagram: "development-time.png" (referenced above, not yet in the repo). Shows the development-time architecture with the Kong Mocking plugin. -->
-*Image pending (`images/step4-mcp/02-development-time.png`): the "development time" diagram. The `<img>` tag above points to this path, so it shows as a broken image until the file is added.*
 
 ## Common problems
 

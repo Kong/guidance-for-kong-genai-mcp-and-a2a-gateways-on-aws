@@ -29,9 +29,6 @@ This step builds that front door. You deploy a small A2A agent to AgentCore, the
 > - **Two versions of the agent.** The agent code shown inline below is a simpler version of [`code/a2a/server_1.py`](code/a2a/server_1.py). The file adds middleware that logs request headers and infers the `A2A-Version` header from the request body. The AgentCore deployment copies `server_1.py`, so the file is what actually runs there.
 > - **decK replaces, it doesn't merge.** `deck gateway reset ... -f` deletes all existing configuration on the `kong-aws` control plane before `sync` applies `ai-a2a-proxy.yaml`. Step 4 and Step 5 do the same, so running them removes this step's route.
 
-![Diagram: how this step's request flows from a caller through Kong's A2A route to the agent on AgentCore](images/architecture/11-life-of-a-request.svg)
-*The request path you're building, from caller to AgentCore and back.*
-
 ---
 
 # The A2A Flow
@@ -66,7 +63,6 @@ This demonstrates:
 * or cross-environment AI interoperability.
 
 Also, it creates a secure hub-and-spoke architecture for distributed Agentic Application Systems.
-
 
 ## Kong Agent Gateway
 
@@ -105,7 +101,6 @@ One of the main capabilities the Kong Gateway provides is extensibility. An exte
 * Integration with Kafka-based data/event streaming infrastructures.
 * WebSockets Size Limit and WebSockets Validator plugins to control the events sent by the devices for IoT projects where MQTT over WebSockets connections are extensively used.
 
-
 ### Kong AI gateway plugins
 
 On the other hand, Kong AI Gateway leverages the existing Kong API Gateway extensibility model to provide specific AI-based plugins more precisely to protect LLM infrastructures, including:
@@ -121,7 +116,6 @@ On the other hand, Kong AI Gateway leverages the existing Kong API Gateway exten
 * **AI Request Transformer** and **AI Response Transformer** plugins seamlessly integrate with LLMs, enabling introspection and transformation of a request’s body before proxying it to the upstream service prior to forwarding the response to the client.
 * **MCP Proxy** and **MCP OAuth2** abstract and protect MCP Servers and RESTful API.
 
-
 ## Konnect Control Plane
 
 At the top-right, administrators interact with the Konnect Control Plane. The dotted management connection indicates that Konnect centrally manages Kong Agent Gateway configuration, including A2A routes, plugin policies, authentication settings, etc.
@@ -132,7 +126,6 @@ Konnect distributes configuration to the Kong data plane nodes without being dir
 
 Konnect provides out-of-the box Observability capabilities, including dashboard, reports, etc. At the sames, as described in the diagram, telemetry and usage data can be exported to external OpenTelemetry Observability Stack. Similarly, Konnect Metering & Billing service can be used to chargeback or quota enforcement.
 
-
 # The A2A Protocol
 
 The official [Agent2Agent (A2A) Protocol](https://a2a-protocol.org/) portal defines it as follows:
@@ -141,7 +134,6 @@ The official [Agent2Agent (A2A) Protocol](https://a2a-protocol.org/) portal defi
 Conceptually, A2A, announced by [Google in April 2025](https://developers.googleblog.com/en/a2a-a-new-era-of-agent-interoperability), treats agents as networked participants that exchange structured requests and responses around tasks and outcomes instead of exposing internal implementation details. This model aligns naturally with controller/task-worker architectures: a coordinating agent can decompose work, assign subtasks to specialized agents, monitor progress, and aggregate results. By separating orchestration from execution, A2A supports scalable multi-agent systems where capabilities can evolve independently while maintaining a consistent communication contract.
 
 The lastest [A2A 1.0 Protocol Specification](https://a2a-protocol.org/v1.0.0/specification/) page provides a nice introduction including [main concepts and main components](https://a2a-protocol.org/v1.0.0/topics/key-concepts/).
-
 
 ## The first Agent
 
@@ -359,8 +351,6 @@ curl -sX POST http://127.0.0.1:9000 \
      }' | jq
 ```
 
-
-
 You should see a response like this:
 ```
 {
@@ -408,10 +398,6 @@ You should see a response like this:
 ## A2A Inspector
 
 https://github.com/a2aproject/a2a-inspector
-
-
-
-
 
 > **Checkpoint: the agent works locally.** The discovery call returns the Agent Card and the `SendMessage` / `message/send` calls return an artifact with the text `that's the response`. If both work, stop `server_1.py` with `Ctrl+C` and move on to AgentCore. (The A2A Inspector linked above is an optional UI for exploring A2A agents.)
 
@@ -463,7 +449,6 @@ dependencies = [
 [tool.hatch.build.targets.wheel]
 packages = ["."]
 ```
-
 
 Make sure the ``./agentcorekong/agentocore.json`` file has the protocol configured to ``A2A`` and the entrypoint is referring to your code. Here's an example:
 
@@ -583,7 +568,6 @@ awscurl \
 
 All requests should be SigV4 signed. Use [**awscurl**](https://pypi.org/project/awscurl/) to send them. Make sure you run ``aws configure`` to configure you local environment with your AWS Access and Secret Keys.
 
-
 Send a request
 ```
 awscurl -X POST \
@@ -636,15 +620,11 @@ awscurl -X POST \
   }' | jq
 ```
 
-
-
-
 If you want to delete the Agent run:
 ```
 agentcore remove all -y
 agentcore deploy
 ```
-
 
 ## Check the Agent logs
 
@@ -657,14 +637,7 @@ aws logs tail $LOGGROUPNAME \
   --region us-west-2
 ```
 
-
-
-
 > **Checkpoint: the agent works on AgentCore.** `agentcore status` shows `Runtime: READY`, and the signed `awscurl` request returns the same `that's the response` artifact you saw locally. Make sure `AGENTCORE_URL` is exported in your shell, because the next section builds the Kong configuration from it.
-
-<!-- TODO: capture screenshot: Amazon Bedrock AgentCore console → Runtimes (us-west-2), runtime "agentcorekong" with status Ready and protocol A2A -->
-<!-- ![AgentCore console showing the agentcorekong runtime as Ready](images/step3-a2a/02-agentcore-runtime-ready.png) -->
-*Screenshot pending (`images/step3-a2a/02-agentcore-runtime-ready.png`): the `agentcorekong` runtime in the AgentCore console, status Ready.*
 
 **What the next section does.** The first command strips the host from `AGENTCORE_URL` and keeps only the path, which identifies your runtime. The `cat > ai-a2a-proxy.yaml` block writes a decK file that defines:
 
@@ -676,15 +649,11 @@ aws logs tail $LOGGROUPNAME \
 
 # Kong Agent Gateway
 
-
-
 ## Kong AI A2A Proxy Plugin
 
 ```
 export DECK_AGENTCORE_PATH="${AGENTCORE_URL#*bedrock-agentcore.us-west-2.amazonaws.com}"
 ```
-
-
 
 ```
 cat > ai-a2a-proxy.yaml << 'EOF'
@@ -719,7 +688,6 @@ services:
 EOF
 ```
 
-
 ## Configure Kong Data Plane
 ```
 deck gateway ping --konnect-control-plane-name kong-aws --konnect-token $PAT
@@ -729,7 +697,6 @@ deck gateway ping --konnect-control-plane-name kong-aws --konnect-token $PAT
 deck gateway reset --konnect-control-plane-name kong-aws --konnect-token $PAT -f
 deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT ai-a2a-proxy.yaml
 ```
-
 
 ## Send a request
 
@@ -756,12 +723,7 @@ curl -sX POST https://kong-dp.kong-demo.com/a2a \
      }' | jq
 ```
 
-
 > **Checkpoint: the agent works through Kong.** The `curl` to `/a2a` (with your own domain in place of `kong-demo.com`) returns the same artifact as the direct AgentCore call. This time no AWS signature is needed on the client side, because Kong signs the call to AgentCore using its Pod Identity role.
-
-<!-- TODO: capture screenshot: Konnect → Gateway Manager → kong-aws → Routes, showing "a2a-route" on path /a2a with the ai-a2a-proxy plugin enabled -->
-<!-- ![Konnect showing a2a-route with the ai-a2a-proxy plugin](images/step3-a2a/03-konnect-a2a-route.png) -->
-*Screenshot pending (`images/step3-a2a/03-konnect-a2a-route.png`): `a2a-route` and its `ai-a2a-proxy` plugin in Konnect.*
 
 The code below is the same as [`code/a2a/client_1.py`](code/a2a/client_1.py). Set it up as "Agent 2" in [python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md), and point `base_url` at your own domain. It resolves the Agent Card through Kong, then lets you chat with the AgentCore agent.
 
@@ -835,23 +797,6 @@ async def main():
 asyncio.run(main())
 ```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ---
 
 ## Verify
@@ -859,13 +804,6 @@ asyncio.run(main())
 A plain, unsigned `curl -sX POST https://kong-dp.<your domain>/a2a ...` (the "Send a request" command under *Kong Agent Gateway*) returns a JSON-RPC result whose artifact text is `that's the response`.
 
 That single response proves the whole chain: Kong on EKS received the call, the `ai-a2a-proxy` plugin authenticated to AgentCore with the Pod Identity IAM role, and the agent on AgentCore answered.
-
-## What you should see
-
-![A2A flow: callers reach agents on AgentCore and elsewhere through Kong A2A routes, with Konnect managing configuration](images/step3-a2a/01-a2a-flow.png)
-*The A2A flow: every agent-to-agent call goes through a Kong-managed A2A route.*
-
-The two pending screenshots (AgentCore runtime Ready, and the route in Konnect) are listed in [images/README.md](images/README.md).
 
 ## Common problems
 
@@ -890,19 +828,8 @@ The "If you want to delete the Agent run" block (`agentcore remove all -y`, then
 aws --version
 aws-cli/2.15.46 Python/3.11.8 Linux/5.10.215–203.850.amzn2.x86_64 exe/x86_64.ubuntu.24 prompt/off
 
-
-
-
-
-
-
-
-
-
 --- MCP Semantic Search tool
 https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-using-mcp-semantic-search.html
-
-
 
 echo "{\"messages\":[{\"role\":\"system\",\"content\":\"Be helpful\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}],\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Get orders for a user\",\"name\":\"get-orders\",\"parameters\":{\"properties\":{\"query_userid\":{\"type\":\"string\",\"description\":\"User ID to filter orders\"}},\"additionalProperties\":false,\"required\":[\"query_userid\"],\"type\":\"object\"}},\"type\":\"function\"},{\"function\":{\"description\":\"Get users\",\"name\":\"get-users\",\"parameters\":{\"properties\":{\"query_id\":{\"type\":\"string\",\"description\":\"Optional user ID\"}},\"required\":[],\"additionalProperties\":false,\"type\":\"object\"}},\"type\":\"function\"},{\"function\":{\"description\":\"Get the current balance for a given customer.\",\"name\":\"get_balance\",\"parameters\":{\"properties\":{\"customer_id\":{\"title\":\"Customer Id\",\"description\":\"Property customer_id\",\"type\":\"string\"}},\"required\":[\"customer_id\"],\"title\":\"get_balanceArguments\",\"type\":\"object\"}},\"type\":\"function\"}],\"stream\":true,\"model\":\"us.anthropic.claude-sonnet-4-20250514-v1:0\"}" | jq 
 
@@ -989,12 +916,6 @@ echo "{\"messages\":[{\"role\":\"system\",\"content\":\"Be helpful\"},{\"role\":
   "stream": true,
   "model": "us.anthropic.claude-sonnet-4-20250514-v1:0"
 }
-
-
-
-
-
-
 
 echo "{\"messages\":[{\"content\":\"Be helpful\",\"role\":\"system\"},{\"content\":[{\"text\":\"list all users\",\"type\":\"text\"}],\"role\":\"user\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"x_amz_bedrock_agentcore_search\",\"description\":\"A special tool that returns a trimmed down list of tools given a context. Use this tool only when there are many tools available and you want to get a subset that matches the provided context.\",\"parameters\":{\"required\":[\"query\"],\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"Property query\"}}}}},{\"type\":\"function\",\"function\":{\"name\":\"kong-agentcore-mcp___get_balance\",\"description\":\"Get the current balance for a given customer.\",\"parameters\":{\"required\":[\"customer_id\"],\"type\":\"object\",\"properties\":{\"customer_id\":{\"description\":\"Property customer_id\",\"type\":\"string\",\"title\":\"Customer Id\"}}}}},{\"type\":\"function\",\"function\":{\"name\":\"kong-mcp-gateway___get-orders\",\"description\":\"Get orders for a user\",\"parameters\":{\"additionalProperties\":false,\"required\":[\"query_userid\"],\"type\":\"object\",\"properties\":{\"query_userid\":{\"type\":\"string\",\"description\":\"User ID to filter orders\"}}}}},{\"type\":\"function\",\"function\":{\"name\":\"kong-mcp-gateway___get-users\",\"description\":\"Get users\",\"parameters\":{\"required\":[],\"additionalProperties\":false,\"type\":\"object\",\"properties\":{\"query_id\":{\"type\":\"string\",\"description\":\"Optional user ID\"}}}}}],\"stream_options\":{\"include_usage\":true},\"model\":\"us.anthropic.claude-sonnet-4-20250514-v1:0\",\"stream\":true}" \
 | jq -r '.tools[].function.name'

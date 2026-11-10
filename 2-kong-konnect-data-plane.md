@@ -90,7 +90,6 @@ eksctl create podidentityassociation \
 
 We are ready to deploy Kong now. Let's install **Kong Operator** which is responsible for creating the Control Plane and deploy the Data Plane.
 
-
 Install the [Kong Operator](https://developer.konghq.com/operator/)
 
 ```
@@ -112,7 +111,6 @@ You can check the Operator’s log with:
 kubectl logs -f $(kubectl get pod -n kong-system -o json | jq -r '.items[].metadata | select(.name | startswith("kong-operator"))' | jq -r '.name') -n kong-system
 ```
 
-
 > **Checkpoint.** The `kubectl logs` command above follows the operator's log. Press `Ctrl+C` to stop following it. The operator pod in `kong-system` should be Running before you continue.
 >
 > The block that creates the `kong` namespace starts with `kubectl delete namespace kong`. On a fresh cluster that line prints a "not found" error. You can ignore it, because the namespace is created on the next line.
@@ -124,7 +122,6 @@ In order to start using the Kong Operator, you need to issue a Konnect Personal 
 ```
 export PAT=<YOUR_PAT>
 ```
-
 
 ## Control Plane
 
@@ -144,7 +141,6 @@ spec:
 EOF
 ```
 
-
 The second CRD creates the new Control Plane:
 
 ```
@@ -163,11 +159,7 @@ spec:
 EOF
 ```
 
-
-You can check your Data Plane in Konnect UI:
-![Control Plane](images/step2-kong/01-control-plane.png)
-
-*Konnect → API Gateway → Gateways, listing `kong-aws` as a self-managed control plane. The operator created it from the `KonnectGatewayControlPlane` resource above. The sentence above the image says "Data Plane", but the screenshot shows the control plane list; the data plane node appears after the next section.*
+You can check your Data Plane in Konnect UI.
 
 ## Data Plane
 
@@ -249,12 +241,7 @@ You can check the Data Plane's log with:
 kubectl logs -f $(kubectl get pod -n kong -o json | jq -r '.items[].metadata | select(.name | startswith("dataplane-kong-aws"))' | jq -r '.name') -n kong
 ```
 
-You should see your Data Plane in Konnect UI:
-
-![Data Plane](images/step2-kong/02-data-plane-connected.png)
-
-
-*Konnect → Gateway Manager → `kong-aws` → Data Plane Nodes, showing one node with status Connected and In Sync. This is the moment the EKS pod and Konnect are linked.*
+You should see your Data Plane in Konnect UI.
 
 #### Check the Load Balancer Listener
 
@@ -281,8 +268,6 @@ aws elbv2 describe-listeners \
   --output table
 ```
 
-
-
 ## Route53
 The last step is responsible for registering the DNS record to AWS Route53.
 
@@ -296,8 +281,6 @@ export LB_NAME=$(aws elbv2 describe-load-balancers \
   --output text)
 ```
 
-
-
 #### Get the Load Balancer Hosted Zone Ids
 
 ```
@@ -307,7 +290,6 @@ export LB_HOSTED_ZONE_ID=$(aws elbv2 describe-load-balancers \
   --query "LoadBalancers[0].CanonicalHostedZoneId" \
   --output text)
 ```
-
 
 Now, using boths Hosted Zone Ids, create an alias, named ``kong-dp.$AWS-DOMAIN`` to the Load Balancer deployed. Make sure you have the HOSTED_ZONE_ID env variable set as we did in the previous step.
 
@@ -360,8 +342,6 @@ X-Kong-Request-Id: 3c38636dfcb2140c62665b654455083c
 }
 ```
 
-
-
 ### Delete CP/DP
 
 If you want to delete both CP and DP run:
@@ -385,18 +365,6 @@ kubectl delete namespace kong
 `curl -i https://kong-dp.$AWS_DOMAIN` returns **`HTTP/1.1 404 Not Found`** with a `Server: kong/...` header and the body `"no Route matched with those values"`.
 
 That 404 is the success signal. It proves DNS → NLB → TLS with your ACM certificate → the Kong pod on EKS all work, and that Kong answered. Kong returns 404 only because you haven't defined any routes yet. That happens in Steps 3 and 4.
-
-## What you should see
-
-![Konnect Gateway Manager listing the kong-aws control plane](images/step2-kong/01-control-plane.png)
-*The `kong-aws` control plane in Konnect.*
-
-![Konnect Data Plane Nodes page with one node Connected and In Sync](images/step2-kong/02-data-plane-connected.png)
-*The EKS data plane node connected to Konnect.*
-
-<!-- TODO: capture screenshot: EC2 console → Load Balancers, the NLB created for proxy-kong-aws, Listeners tab showing TCP/HTTP 80 and TLS/HTTPS 443 with the ACM certificate -->
-<!-- ![NLB listeners on ports 80 and 443](images/step2-kong/03-nlb-listeners.png) -->
-*Screenshot pending (`images/step2-kong/03-nlb-listeners.png`): the NLB's listeners on ports 80 and 443, with the ACM certificate on 443.*
 
 ## Common problems
 

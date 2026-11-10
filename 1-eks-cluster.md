@@ -30,8 +30,6 @@ This step builds only AWS resources. Nothing Kong-specific exists yet.
 
 # AWS and EKS
 
-
-
 ## EKS Cluster Creation
 
 Create the **EKS Cluster** with:
@@ -51,13 +49,9 @@ eksctl create addon --cluster kong314 \
   --name eks-pod-identity-agent
 ```
 
-
-
 ## AWS Load Balancer Controller
 
 Install the **AWS Load Balancer Controller** to expose the **Kong AI Gateway Data Plane** with an **AWS NLB (Network Load Balancer)** instance. To learn mode about the **AWS Load Balancer Controller** read its [documentation](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/)
-
-
 
 #### Create the IAM Policy for the Controller
 
@@ -70,7 +64,6 @@ aws iam create-policy \
     --policy-name AWSLoadBalancerControllerIAMPolicy \
     --policy-document file://iam_policy.json
 ```
-
 
 #### Install AWS Load Balancer Controller
 
@@ -94,15 +87,9 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n ku
   --set serviceAccount.name=aws-load-balancer-controller
 ```
 
-
-
 > **Checkpoint.** At this point the cluster exists and the Load Balancer Controller is installed in `kube-system`. A quick way to look is `k9s` (see Prerequisites): open the `kube-system` namespace and look for `aws-load-balancer-controller` pods in the Running state.
 >
 > The `helm install` above uses the chart reference `eks/aws-load-balancer-controller`. This guide doesn't include a `helm repo add eks ...` command. If Helm says it can't find the `eks` repository, see [Troubleshooting](docs/troubleshooting.md#helm-cannot-find-the-eks-chart-repository).
-
-<!-- TODO: capture screenshot: EKS console, Clusters list, cluster "kong314" in us-west-2 with Status "Active" -->
-<!-- ![EKS console showing the kong314 cluster as Active](images/step1-eks/01-eks-cluster-active.png) -->
-*Screenshot pending (`images/step1-eks/01-eks-cluster-active.png`): the EKS console showing cluster `kong314` as Active.*
 
 ## Amazon Route53 Public Domain
 
@@ -150,9 +137,6 @@ aws route53domains get-operation-detail \
   --region us-east-1 | jq -r '.Status'
 ```
 
-
-
-
 ## AWS Certificate Manager
 
 Issue a Digital Certificate for the Domain with **AWS Certificate Manager (ACM)**. The Digital Certificate will be used during the Kong AI Gateway Data Plane deployment time. It will be attached to the NLB provisioned alongside the Data Plane deployment.
@@ -164,7 +148,6 @@ aws acm request-certificate \
   --region us-west-2
 ```
 
-
 #### Update the Route 53 Domain
 
 You need to update the Route 53 domain with the CNAME Record Name and Record Value that AWS ACM generated for DNS validation of your certificate.
@@ -175,7 +158,6 @@ export CERTIFICATE_ARN=$(aws acm list-certificates --region us-west-2 \
   --output json | \
   jq -r ".CertificateSummaryList[] | select(.DomainName == \"*.${AWS_DOMAIN}\") | .CertificateArn")
 ```
-
 
 Get both CNAME Record Name and Record Value:
 ```
@@ -215,7 +197,6 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-
 Make sure the Digital Certificate has been issued with:
 ```
 aws acm list-certificates \
@@ -247,16 +228,6 @@ That's what you retrieved using the ``acm describe-certificate`` commands.
 You're done with Step 1 when the certificate status command above prints `ISSUED`. That one check confirms the whole chain: the domain is registered, Route 53 is authoritative for it, the validation CNAME is in place, and ACM trusts it.
 
 Keep this terminal open. Step 2 uses the `AWS_DOMAIN`, `CERTIFICATE_ARN` and `HOSTED_ZONE_ID` variables you exported here.
-
-## What you should see
-
-<!-- TODO: capture screenshot: Route 53 console, Hosted zones, the zone for your domain showing NS, SOA and the ACM validation CNAME record -->
-<!-- ![Route 53 hosted zone with the ACM validation CNAME record](images/step1-eks/02-route53-hosted-zone.png) -->
-*Screenshot pending (`images/step1-eks/02-route53-hosted-zone.png`): the hosted zone with its NS, SOA and ACM validation CNAME records.*
-
-<!-- TODO: capture screenshot: ACM console in us-west-2, certificate for *.<your domain> with Status "Issued" -->
-<!-- ![ACM console showing the wildcard certificate as Issued](images/step1-eks/03-acm-certificate-issued.png) -->
-*Screenshot pending (`images/step1-eks/03-acm-certificate-issued.png`): the wildcard certificate in ACM with status Issued.*
 
 ## Common problems
 

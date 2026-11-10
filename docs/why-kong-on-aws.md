@@ -70,17 +70,23 @@ Kong adds to your AWS footprint. It doesn't route around it. Here is what this r
 | **Secrets Manager** | IAM permissions are granted (`secretsmanager:GetSecretValue`). The reference architecture stores provider credentials and certificates here. | Step 2 (permissions only) |
 | **MemoryDB for Redis** | In the reference architecture, the backend for semantic caching, semantic routing and semantic guards. Not deployed by this guide. | Architecture only |
 
-The [who-owns-what](#who-owns-what) diagram below splits these responsibilities between AWS, Kong and you.
+The [who-owns-what](#who-owns-what) table below splits these responsibilities between AWS, Kong and you.
 
 ## Who owns what
 
-![Three columns. AWS-managed: EKS control plane, NLB, ACM, Route 53, Bedrock models, Guardrails service, AgentCore runtime, IAM, CloudWatch. Kong-managed: Konnect control plane, Kong Identity, Konnect analytics, Kong software releases. Your responsibility: worker nodes, IAM policy scope, Kong configuration, secrets, agent code, DNS, guardrail definitions, cost and clean-up](../images/architecture/12-who-owns-what.svg)
-*Who is responsible for what once Kong is in the picture.*
+| AWS-managed | Kong-managed | Your responsibility |
+|---|---|---|
+| EKS control plane | Konnect control plane (SaaS) | EKS worker nodes and upgrades |
+| Network Load Balancer | Kong Identity (OAuth2 server) | Scope of the IAM policy |
+| ACM certificate issuance and renewal | Konnect analytics | Kong routes, plugins and decK files |
+| Route 53 DNS service | Kong Gateway and Operator releases | Konnect PAT and client secrets |
+| Bedrock models | | Agent code (`server_1.py`, …) |
+| Bedrock Guardrails service | | Domain and DNS records |
+| AgentCore runtime | | Guardrail definitions in Bedrock |
+| IAM and Pod Identity service | | Cost monitoring and clean-up |
+| CloudWatch | | |
 
 The Kong data plane runs in **your** account, on **your** nodes, so patching the nodes and choosing the Kong image version is your job. The control plane (Konnect) and the Kong Identity service are run by Kong. AWS keeps running everything Kong calls.
-
-![Kong-powered multi-agent, multi-provider AI gateway on AWS overview](../images/architecture/02-konnect-capabilities.png)
-*Kong's capabilities mapped onto AWS.*
 
 ## When you probably don't need Kong
 
