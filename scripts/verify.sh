@@ -4,9 +4,14 @@
 # Needs these exported in your shell (the values from Steps 1 and 3):
 #   AWS_DOMAIN, ISSUER_URL, CLIENT_ID, CLIENT_SECRET
 # Optional:
-#   KONG_IP  pins kong-dp.$AWS_DOMAIN to one address, if your local DNS can't resolve it yet.
+#   KONG_HOST  the gateway to test (default kong-dp.$AWS_DOMAIN; use ai-dp.$AWS_DOMAIN for Step 6).
+#   KONG_IP    pins KONG_HOST to one address, if your local DNS can't resolve it yet.
+#   MODEL      also test an LLM route, e.g. MODEL=nova-micro for Step 6's Bedrock model.
+#   MCP_AUTH   set to 1 when /mcp requires a token (Step 6), to also check it rejects calls without one.
 #
-# Usage:  ./scripts/verify.sh        Exit code is 0 only if every check passes.
+# Usage:  ./scripts/verify.sh
+#         KONG_HOST=ai-dp.$AWS_DOMAIN MODEL=nova-micro MCP_AUTH=1 ./scripts/verify.sh
+# Exit code is 0 only if every check passes.
 
 for tool in curl jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "Missing tool: $tool"; exit 2; }
@@ -15,7 +20,7 @@ for v in AWS_DOMAIN ISSUER_URL CLIENT_ID CLIENT_SECRET; do
   if [ -z "${!v:-}" ]; then echo "Missing $v (export it first)"; exit 2; fi
 done
 
-HOST="kong-dp.${AWS_DOMAIN}"
+HOST="${KONG_HOST:-kong-dp.${AWS_DOMAIN}}"
 pass=0
 fail=0
 
@@ -47,6 +52,7 @@ check() {
 
 A2A_BODY='{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"hi"}]}}}'
 MCP_HDRS=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
+MCP_INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"verify","version":"1.0"}}}'
 
 get_token() {
   curl -s -X POST "${ISSUER_URL}/oauth/token" \
@@ -83,8 +89,8 @@ t_a2a_good_token() {
 t_mcp_initialize() {
   local hdrs body
   hdrs=$(mktemp)
-  body=$(kc -D "$hdrs" -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" \
-    --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"verify","version":"1.0"}}}')
+  body=$(kc -D "$hdrs" -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" -H "Authorization: Bearer ${TOKEN}" \
+    --data "$MCP_INIT")
   SID=$(grep -i '^mcp-session-id:' "$hdrs" | awk '{print $2}' | tr -d '\r')
   rm -f "$hdrs"
   echo "$body" | grep -q "serverInfo"
@@ -92,16 +98,35 @@ t_mcp_initialize() {
 
 t_mcp_list() {
   local out
-  out=$(kc -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" -H "Mcp-Session-Id: ${SID}" \
+  out=$(kc -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" -H "Authorization: Bearer ${TOKEN}" -H "Mcp-Session-Id: ${SID}" \
     --data '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
   echo "$out" | grep -q "check-inventory" && echo "$out" | grep -q "list-orders"
 }
 
 t_mcp_call() {
   local out
-  out=$(kc -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" -H "Mcp-Session-Id: ${SID}" \
+  out=$(kc -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" -H "Authorization: Bearer ${TOKEN}" -H "Mcp-Session-Id: ${SID}" \
     --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-123"}}}')
   echo "$out" | grep -q "KONG-123" && ! echo "$out" | grep -q '"isError":true'
+}
+
+t_mcp_no_token() {
+  local code
+  code=$(kc -o /dev/null -w '%{http_code}' -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" --data "$MCP_INIT")
+  [ "$code" = "401" ]
+}
+
+t_model_no_token() {
+  local code
+  code=$(kc -o /dev/null -w '%{http_code}' "https://${HOST}/v1/chat/completions" \
+    --json "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}")
+  [ "$code" = "401" ]
+}
+
+t_model_good_token() {
+  kc "https://${HOST}/v1/chat/completions" -H "Authorization: Bearer ${TOKEN}" \
+    --json "{\"model\":\"${MODEL}\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hi\"}]}" \
+    | jq -e '.choices[0].message.content and .usage.total_tokens > 0' >/dev/null
 }
 
 echo "Checking https://${HOST}"
@@ -115,9 +140,16 @@ check "gateway answers (404 on /, no route there)" t_gateway_up
 check "/a2a without a token is rejected by Kong" t_a2a_no_token
 check "/a2a with a bad token is rejected by Kong" t_a2a_bad_token
 check "/a2a with a valid token reaches the agent" t_a2a_good_token
+if [ -n "${MCP_AUTH:-}" ]; then
+  check "/mcp without a token is rejected" t_mcp_no_token
+fi
 check "/mcp initialize returns server info" t_mcp_initialize
 check "/mcp lists check-inventory and list-orders" t_mcp_list
 check "/mcp tool call reaches the REST backend" t_mcp_call
+if [ -n "${MODEL:-}" ]; then
+  check "/v1 model ${MODEL} without a token is rejected" t_model_no_token
+  check "/v1 model ${MODEL} with a valid token answers" t_model_good_token
+fi
 
 echo
 echo "${pass} passed, ${fail} failed"

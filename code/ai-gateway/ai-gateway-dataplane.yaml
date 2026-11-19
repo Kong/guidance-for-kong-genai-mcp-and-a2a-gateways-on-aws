@@ -1,0 +1,40 @@
+# The AI Gateway data plane on EKS, behind its own internet-facing NLB.
+# Apply with (needs CERTIFICATE_ARN exported):
+#   sed "s|\${CERTIFICATE_ARN}|$CERTIFICATE_ARN|" ai-gateway-dataplane.yaml | kubectl apply -f -
+apiVersion: aigateway.konghq.com/v1alpha1
+kind: AIGatewayDataPlane
+metadata:
+  name: kong-aws-ai-dp
+  namespace: kong
+spec:
+  controlPlaneRef:
+    type: konnectNamespacedRef
+    konnectNamespacedRef:
+      name: kong-aws-ai
+  deployment:
+    replicas: 1
+    podTemplateSpec:
+      spec:
+        # Pod Identity: this service account carries the Step 2 IAM role,
+        # which the gateway uses to sign calls to AgentCore and Bedrock.
+        serviceAccountName: kaigateway-podid-sa
+        containers:
+        - name: aigw   # the Operator's container name; any other name adds a second container
+  network:
+    services:
+      ingress:
+        type: LoadBalancer
+        ports:
+        - name: https
+          port: 443
+          targetPort: 8000
+        - name: http
+          port: 80
+          targetPort: 8000
+        annotations:
+          service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+          service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+          service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+          service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "${CERTIFICATE_ARN}"
+          service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+          service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"

@@ -27,7 +27,7 @@ This step is also where AWS IAM enters the picture. Kong doesn't get AWS access 
 - You have a Kong Konnect account. If you don't, start a [free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
 - Replace `<YOUR_AWS_ACCOUNT>` with your AWS account ID.
 
-> **Heads-up about the IAM policy below.** It allows `bedrock:ApplyGuardrail`, `bedrock:InvokeModel`, `secretsmanager:GetSecretValue` and related actions on `"Resource": "*"`. That is broader than you'd use in production. Scope it down to specific resource ARNs before using this in production. None of the later steps in this guide use it yet: Step 3 reaches AgentCore with OAuth2 tokens, because Kong's AI A2A Proxy plugin can't sign requests with IAM. The role is in place for the LLM Gateway to Bedrock and other AWS calls.
+> **Heads-up about the IAM policy below.** It allows `bedrock:ApplyGuardrail`, `bedrock:InvokeModel`, `secretsmanager:GetSecretValue` and related actions on `"Resource": "*"`. That is broader than you'd use in production. Scope it down to specific resource ARNs before using this in production. Steps 3 to 5 don't use it: Step 3 reaches AgentCore with OAuth2 tokens, because the 3.14 AI A2A Proxy plugin can't sign requests with IAM. Step 6's AI Gateway does use it, to sign calls to AgentCore and Amazon Bedrock.
 >
 > **Shared AWS account?** If `bedrock-policy` or `kaigateway-aws-podid-role` already exists, use suffixed names (for example `bedrock-policy-kong314`) and use them consistently, as in Step 1.
 

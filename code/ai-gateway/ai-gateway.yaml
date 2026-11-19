@@ -1,0 +1,126 @@
+# kongctl configuration for the AI Gateway: an auth strategy, an A2A agent, an MCP server
+# and a Bedrock model.
+# Needs these exported: ISSUER_URL, INTROSPECTION_URL, CLIENT_ID, CLIENT_SECRET,
+# CACHE_TOKENS_SALT (Kong Identity, from Step 3) and AGENTCORE_URL (the SigV4 "agent" runtime).
+ai_gateway_auth_strategies:
+  - ref: kong-identity-oidc
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: kong-identity-oidc
+    display_name: Kong Identity (OAuth2 introspection)
+    type: openid-connect
+    config:
+      issuer: !env ISSUER_URL
+      client_id:
+        - !env CLIENT_ID
+      client_secret:
+        - !secret {source: !env CLIENT_SECRET}
+      auth_methods:
+        - introspection
+      introspection_endpoint: !env INTROSPECTION_URL
+      ssl_verify: true
+      cache_tokens_salt: !env CACHE_TOKENS_SALT
+
+ai_gateway_agents:
+  - ref: agentcore-hello
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: agentcore-hello
+    display_name: AgentCore Hello World Agent
+    type: a2a
+    enabled: true
+    access:
+      auth_strategies:
+        - !ref kong-identity-oidc
+    config:
+      url: !env AGENTCORE_URL
+      route:
+        paths:
+          - /a2a
+        strip_path: true
+      upstream:
+        auth:
+          type: aws        # SigV4, with the data plane's Pod Identity credentials
+          region: us-west-2
+      logging:
+        payloads: true
+
+ai_gateway_mcp_servers:
+  - ref: inventory-tools
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: inventory-tools
+    display_name: Inventory and Orders Tools
+    type: conversion-listener
+    enabled: true
+    access:
+      acl_attribute_type: consumer
+      auth_strategies:
+        - !ref kong-identity-oidc#name   # MCP servers list strategies by name
+    config:
+      url: http://httpbin.kong.svc.cluster.local:8080/anything
+      route:
+        paths:
+          - /mcp
+      server:
+        timeout: 60000
+    tools:
+      - name: check-inventory
+        description: Check how many units of a product are in stock, by SKU.
+        method: GET
+        path: /mcp/inventory
+        parameters:
+          - name: sku
+            in: query
+            required: true
+            description: The product SKU to look up.
+            schema:
+              type: string
+      - name: list-orders
+        description: List recent orders, optionally filtered by status.
+        method: GET
+        path: /mcp/orders
+        parameters:
+          - name: status
+            in: query
+            required: false
+            description: Only return orders with this status, for example shipped.
+            schema:
+              type: string
+
+# LLM gateway to Amazon Bedrock. No keys: the data plane signs with its Pod Identity role,
+# which Step 2's policy allows to call bedrock:InvokeModel.
+ai_gateway_model_providers:
+  - ref: aws-bedrock
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: aws-bedrock
+    display_name: Amazon Bedrock (Pod Identity)
+    type: bedrock
+    config:
+      auth:
+        type: aws
+
+ai_gateway_models:
+  - ref: nova-micro
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: nova-micro
+    display_name: Amazon Nova Micro
+    type: model
+    access:
+      auth_strategies:
+        - !ref kong-identity-oidc   # without this, anyone could run Bedrock calls on your bill
+    formats:
+      - type: openai
+    capabilities:
+      - generate
+    config:
+      route:
+        paths:
+          - /v1
+        model:
+          body_param: model
+          values:
+            - nova-micro
+    targets:
+      - name: us.amazon.nova-micro-v1:0
+        provider: aws-bedrock
+        config:
+          type: bedrock
+          region: us-west-2

@@ -15,6 +15,7 @@ You're probably already building GenAI on AWS with Bedrock models, AgentCore-hos
    - [Step 3: Put an AgentCore agent behind Kong's Agent (A2A) Gateway](#step-3-put-an-agentcore-agent-behind-kongs-agent-a2a-gateway)
    - [Step 4: Turn a REST API into MCP tools with Kong's MCP Gateway](#step-4-turn-a-rest-api-into-mcp-tools-with-kongs-mcp-gateway)
    - [Step 5: Protect the A2A route with Kong Identity](#step-5-protect-the-a2a-route-with-kong-identity)
+   - [Step 6: Run the same agents and tools on Konnect AI Gateway](#step-6-run-the-same-agents-and-tools-on-konnect-ai-gateway)
 7. [Test and demo](#test-and-demo)
 8. [Clean up](#clean-up)
 9. [Repo layout](#repo-layout)
@@ -80,10 +81,11 @@ When you finish Steps 1–5 you'll have:
 - An **A2A agent running on Bedrock AgentCore** with JWT inbound auth, reachable through Kong at `/a2a` with a Kong Identity token and no AWS credentials (Step 3).
 - An **MCP server on Kong** at `/mcp`, turning a REST API into two MCP tools that any MCP client can list and call (Step 4).
 - **Token checks at the gateway**: Kong rejects `/a2a` calls without a valid token before they reach AWS (Step 5).
+- A **Konnect AI Gateway** at `ai-dp.<your domain>`, running the same agent and tools as AI Gateway entities, with Kong signing AgentCore and **Amazon Bedrock** calls through its IAM role (Step 6).
 
 Steps 4 and 5 add to Kong's configuration without removing what came before, so all three routes work together at the end.
 
-> **What this guide does *not* configure yet.** The architecture includes the LLM Gateway to Bedrock, Bedrock Guardrails, MemoryDB for semantic caching, Secrets Manager for credentials and CloudWatch for Kong metrics. The IAM policy in Step 2 already grants the Bedrock, Guardrails and Secrets Manager permissions. This guide has **no deployment steps** for these pieces yet.
+> **What this guide does *not* configure yet.** The architecture includes Bedrock Guardrails, MemoryDB for semantic caching, Secrets Manager for credentials and CloudWatch for Kong metrics. The IAM policy in Step 2 already grants the Guardrails and Secrets Manager permissions. This guide has **no deployment steps** for these pieces yet. The LLM Gateway to Bedrock is covered on Konnect AI Gateway in Step 6.
 
 - Run [Clean up](#clean-up) when you're done.
 
@@ -198,6 +200,18 @@ Run everything in **one terminal session**. Later steps reuse variables exported
 
 **Common problems.** decK requires an explicit `cache_tokens_salt`. A data plane with global TLS verification rejects the plugin unless it sets `ssl_verify: true`, and silently keeps its old configuration. See [Step 5 troubleshooting](docs/troubleshooting.md#step-5-kong-identity).
 
+### Step 6: Run the same agents and tools on Konnect AI Gateway
+
+**Full doc:** [6-konnect-ai-gateway.md](6-konnect-ai-gateway.md)
+
+**Why this step.** Konnect's AI Gateway replaces plugins with AI entities (Agents, MCP Servers, Models, Auth Strategies) that Konnect turns into gateway configuration. Its Agent entity can sign calls to AgentCore with AWS SigV4, which the Kong 3.14 plugin in Step 3 can't. So callers present a Kong Identity token, and Kong calls AWS with its own IAM role, the design this guide set out to build. It also adds the LLM Gateway to Amazon Bedrock.
+
+**What it does.** Upgrades the Kong Operator, creates an AI Gateway control plane and an AI Gateway data plane on EKS behind its own NLB at `ai-dp.<your domain>`, then uses kongctl to declare a Kong Identity auth strategy, an Agent for the SigV4 AgentCore runtime, an MCP Server with the same two tools, and an Amazon Nova Micro model on Bedrock. Steps 1–5 keep running alongside.
+
+**Verify.** On `ai-dp.<your domain>`, `/a2a`, `/mcp` and `/v1/chat/completions` return `401` without a token, the agent answers with one (the log shows Kong signing with IAM), the MCP tools work, and Nova answers with token usage.
+
+**Common problems.** The operator's AI data plane controller is off by default. The pod template must name the container `aigw`. kongctl requires `cache_tokens_salt`. See the full doc.
+
 ## Test and demo
 
 Once Steps 1–5 are done, [`scripts/verify.sh`](scripts/verify.sh) checks the whole setup in one command: the gateway answers, `/a2a` rejects missing and bad tokens at Kong and accepts a valid one, and `/mcp` lists and calls its tools.
@@ -207,6 +221,8 @@ export AWS_DOMAIN=<your domain> ISSUER_URL=<issuer URL> CLIENT_ID=<client ID> CL
 ./scripts/verify.sh
 ```
 
+For Step 6's AI Gateway, set `KONG_HOST=ai-dp.<your domain> MODEL=nova-micro MCP_AUTH=1` to test it the same way, including the Bedrock model and the token check on `/mcp`.
+
 [docs/demo.md](docs/demo.md) explains each check and gives a five-minute walk-through for showing the setup to someone else.
 
 ## Clean up
@@ -214,6 +230,7 @@ export AWS_DOMAIN=<your domain> ISSUER_URL=<issuer URL> CLIENT_ID=<client ID> CL
 Stop billing by removing what you created, **roughly in reverse order**.
 
 - **AgentCore agents** (Step 3): both runtimes (`agent` and `agentjwt`), using the teardown in [Step 3](3-a2a-agent-gateway-agentcore.md#tearing-this-step-down). The CDK bootstrap stack (`CDKToolkit`) stays in the account; delete it only if nothing else uses CDK there.
+- **Konnect AI Gateway** (Step 6): use the teardown in [Step 6](6-konnect-ai-gateway.md#tearing-this-step-down), then delete the `ai-dp.<your domain>` record.
 - **Echo backend** (Step 4): `kubectl -n kong delete service,deployment httpbin`.
 - **Kong control plane and data plane** (Step 2): use the teardown in [Step 2](2-kong-konnect-data-plane.md#tearing-this-step-down). This also deletes the NLB that Kubernetes created for the data plane.
 
@@ -238,8 +255,10 @@ Check the Billing console a day later to confirm nothing is still running.
 ├── 3-a2a-agent-gateway-agentcore.md       # Step 3: A2A agent locally → AgentCore → Kong Identity → JWT runtime behind Kong
 ├── 4-mcp-gateway.md                       # Step 4: MCP flow explained; in-cluster REST API exposed as MCP tools
 ├── 5-kong-identity-oauth2.md              # Step 5: Kong Identity tokens explored; OpenID Connect on /a2a
+├── 6-konnect-ai-gateway.md                # Step 6: Konnect AI Gateway with Agent, MCP Server and Bedrock Model
 ├── code/a2a/                              # Step 3 sample agents and Python setup (server_1.py, client_1.py)
-├── scripts/verify.sh                      # end-to-end check of /a2a and /mcp after Step 5
+├── code/ai-gateway/                       # Step 6 Kubernetes manifests and kongctl configuration
+├── scripts/verify.sh                      # end-to-end check of /a2a, /mcp and (Step 6) /v1 on either gateway
 ├── docs/
 │   ├── demo.md                            # how to test and demo the finished setup
 │   ├── why-kong-on-aws.md                 # the AWS-first case for (and against) adding Kong

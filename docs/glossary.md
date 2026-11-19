@@ -61,7 +61,7 @@ These are plain-language definitions for every acronym and product term used in 
 | **OTel (OpenTelemetry)** | An open standard for traces, metrics and logs. Kong's OTel plugin exports to any compatible backend. |
 | **PAT (Personal Access Token)** | A token you generate in Konnect so that CLIs (Kong Operator, decK, `curl`) can call Konnect APIs as you. |
 | **PII** | Personally identifiable information. |
-| **Pod Identity (EKS Pod Identity)** | EKS feature that gives pods an IAM role without static keys. Kong's IAM role for AWS services (such as Bedrock) comes through it. |
+| **Pod Identity (EKS Pod Identity)** | EKS feature that gives pods an IAM role without static keys. Step 6's AI Gateway gets its IAM role through it, to sign calls to AgentCore and Bedrock. |
 | **Route / service (Kong)** | A **service** is an upstream Kong forwards to. A **route** is the path or host rule that sends requests to it. Plugins attach to either. |
 | **Route 53 (Amazon Route 53)** | AWS's DNS and domain registration service. |
 | **SAT (System Access Token)** | A Konnect token owned by a system account rather than a person. An alternative to a PAT. |

@@ -1,6 +1,6 @@
 # Step 5: Protect the A2A route with Kong Identity (OAuth2)
 
-[← Step 4](4-mcp-gateway.md) · **Step 5** · [README →](README.md)
+[← Step 4](4-mcp-gateway.md) · **Step 5** · [Step 6 →](6-konnect-ai-gateway.md)
 
 ## Why this step
 
@@ -248,4 +248,4 @@ This time the agent on AgentCore answers with the `that's the response` artifact
 
 Delete the `AuthZ_Server_1` authorization server in Konnect (**Identity**). Deleting the `kong-aws` control plane in [Clean up](README.md#clean-up) removes the plugin. Delete `a2a-oidc.yaml` from your working directory when you're done.
 
-[← Step 4](4-mcp-gateway.md) · **Step 5** · [README →](README.md)
+[← Step 4](4-mcp-gateway.md) · **Step 5** · [Step 6 →](6-konnect-ai-gateway.md)
