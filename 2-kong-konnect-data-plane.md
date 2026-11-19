@@ -384,6 +384,6 @@ That 404 is the success signal. It proves DNS → NLB → TLS with your ACM cert
 
 ## Tearing this step down
 
-The "Delete CP/DP" block above removes the Kong objects. The [Clean up](README.md#clean-up) section in the README covers what else to remove.
+The "Delete CP/DP" block above removes the Kong objects. [docs/teardown.md](docs/teardown.md) removes everything the guide creates, in a safe order.
 
 [← Step 1](1-eks-cluster.md) · **Step 2** · [Step 3 →](3-a2a-agent-gateway-agentcore.md)

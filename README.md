@@ -227,7 +227,7 @@ For Step 6's AI Gateway, set `KONG_HOST=ai-dp.<your domain> MODEL=nova-micro MCP
 
 ## Clean up
 
-Stop billing by removing what you created, **roughly in reverse order**.
+Stop billing by removing what you created, **roughly in reverse order**. **[docs/teardown.md](docs/teardown.md) has the commands for everything below, in a safe order.** The EKS cluster and the AgentCore runtimes are the main ongoing costs.
 
 - **AgentCore agents** (Step 3): both runtimes (`agent` and `agentjwt`), using the teardown in [Step 3](3-a2a-agent-gateway-agentcore.md#tearing-this-step-down). The CDK bootstrap stack (`CDKToolkit`) stays in the account; delete it only if nothing else uses CDK there.
 - **Konnect AI Gateway** (Step 6): use the teardown in [Step 6](6-konnect-ai-gateway.md#tearing-this-step-down), then delete the `ai-dp.<your domain>` record.

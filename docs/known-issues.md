@@ -32,7 +32,7 @@ Steps 1 to 5 were run end to end in November 2026 with Kong Gateway `3.14.0.3`, 
 
 ## Commands that may trip readers up
 
-17. There are no clean-up commands for the EKS cluster, IAM policies and roles, ACM certificate, Route 53 records, hosted zone and domain, Load Balancer Controller, Kong Operator, or the Kong Identity auth server. The README lists what to remove.
+17. [docs/teardown.md](teardown.md) has commands for removing everything, but they haven't been run end to end yet.
 18. `agentcore remove all -y` is followed by `agentcore deploy`. Confirm this is the intended teardown, now that the project has two runtimes.
 19. The Python setup uses `--python 3.13`, while `agentcore.json` sets `"runtimeVersion": "PYTHON_3_14"`.
 20. **decK wrappers.** Some company setups wrap `deck` and refuse `--konnect-token`, taking the token from a pinned profile instead. If so, drop the flag and point the profile at the Konnect organization that holds `kong-aws`.

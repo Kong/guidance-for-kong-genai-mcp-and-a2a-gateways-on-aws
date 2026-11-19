@@ -13,7 +13,7 @@ Steps 3 to 5 build the A2A and MCP gateways the classic way: services, routes an
 | **Auth Strategy** | the `openid-connect` plugin | Kong Identity token checks |
 | **Model** and **Model Provider** | the `ai-proxy-advanced` plugin | Amazon Nova Micro on Bedrock, at `/v1` |
 
-The Agent entity also restores the design Step 3 couldn't build: it can **sign calls to AgentCore with AWS SigV4**, using the data plane's Pod Identity role. Callers present a Kong Identity token, Kong checks it, then Kong signs the AWS call. AgentCore never sees the caller's token, and no runtime needs JWT inbound auth.
+The Agent entity also restores the design Step 3 couldn't build: it can **sign calls to AgentCore with AWS SigV4**, using the data plane's Pod Identity role. Callers present a Kong Identity token, Kong checks it, then Kong signs the AWS call with its own IAM role. AgentCore authenticates Kong, not the caller, so no runtime needs JWT inbound auth.
 
 This step runs **alongside** Steps 1 to 5. It adds a second control plane, data plane and load balancer at `ai-dp.<your domain>`, and leaves `kong-dp.<your domain>` as it is.
 
@@ -129,7 +129,7 @@ export INTROSPECTION_URL=$ISSUER_URL/introspect
 export CACHE_TOKENS_SALT=$(openssl rand -hex 16)
 ```
 
-Preview, then apply (from the root of this repo):
+Preview, then apply. The paths below assume you run from the root of this repo. If a company wrapper pins kongctl to a profile per folder, copy the file into your pinned folder and run the commands there.
 
 ```bash
 kongctl diff --mode apply -f code/ai-gateway/ai-gateway.yaml
@@ -199,11 +199,10 @@ To run all of these in one go: `KONG_HOST=ai-dp.$AWS_DOMAIN MODEL=nova-micro MCP
 ## See it in Konnect
 
 Open **AI Gateway → Gateways → Kong AWS AI Gateway**:
-- **Agents**, **MCP Servers** and **Auth strategies** show the entities from 6e.
+- **Agents**, **MCP Servers**, **Models**, **Providers** and **Auth strategies** show the entities from 6e.
 - **Data plane nodes** shows the EKS pod and its version.
-- **Observability** shows request analytics a few minutes after traffic.
-
-The **Usage** tiles on the gateway's Overview (requests, LLM latency, tokens and estimated cost) fill in from model traffic, a few minutes after the first calls to `/v1`.
+- The gateway's **Overview** tiles (total requests, average LLM latency, token usage and estimated cost) count **model traffic only**, the calls to `/v1`. They update a few minutes after the calls. Agent and MCP calls don't appear there. Look for them under **Observability**.
+- **Estimated cost** stays at `$0.00` unless the model has cost settings. A few thousand Nova Micro tokens also cost well under a cent.
 
 ---
 
@@ -230,12 +229,6 @@ The **Usage** tiles on the gateway's Overview (requests, LLM latency, tokens and
 
 ## Tearing this step down
 
-```bash
-kongctl delete -f code/ai-gateway/ai-gateway.yaml
-kubectl delete aigatewaydataplane kong-aws-ai-dp -n kong
-kubectl delete konnectaigateway kong-aws-ai -n kong
-```
-
-Then delete the `ai-dp.<your domain>` alias record in Route 53. Deleting the data plane also removes its NLB. These teardown commands haven't been tested yet.
+Delete the data plane (which also deletes its NLB), then the AI Gateway, then the DNS record. Section 1 of [docs/teardown.md](docs/teardown.md) has the commands. Deleting the AI Gateway in Konnect should remove its agents, MCP servers, models, providers and auth strategies with it. To remove everything else the guide created, continue with the rest of that page.
 
 [← Step 5](5-kong-identity-oauth2.md) · **Step 6** · [README →](README.md)
