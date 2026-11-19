@@ -9,7 +9,6 @@ Each step was run in November 2026 with Kong Operator `2.4.0`, the `kong/kong-ai
 1. **The guide hasn't been run start to finish on a fresh account.** The AI Gateway setup was built on top of an earlier, plugin-based setup in the same cluster, then written up as this linear path. In particular, these weren't run exactly as written:
    - installing Kong Operator `2.4.0` directly in Step 2 (it was upgraded from `2.1.5`);
    - applying Steps 3 to 6 one file at a time (the same entities were applied together, in fewer passes);
-   - the teardown in [docs/teardown.md](teardown.md).
 
    Have someone follow the README in a clean account before relying on it.
 

@@ -270,6 +270,6 @@ Without a token: `401`. With one: the initialize result, then the tool's echo wi
 
 ## Tearing this step down
 
-Section 3 of [docs/teardown.md](docs/teardown.md) deletes the `AuthZ_Server_1` authorization server. Deleting the AI Gateway (section 1) removes the auth strategy.
+Section 2 of [docs/teardown.md](docs/teardown.md) deletes the `AuthZ_Server_1` authorization server. Deleting the AI Gateway (section 1) removes the auth strategy.
 
 [← Step 4](4-mcp-gateway.md) · **Step 5** · [Step 6 →](6-llm-gateway-bedrock.md)

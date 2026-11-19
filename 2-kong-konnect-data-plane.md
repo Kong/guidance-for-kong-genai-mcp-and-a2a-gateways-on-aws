@@ -254,6 +254,6 @@ That 404 is the success signal. It proves DNS → NLB → TLS with your ACM cert
 
 ## Tearing this step down
 
-Sections 1 and 2 of [docs/teardown.md](docs/teardown.md) remove the AI Gateway, its data plane and NLB, and the operator. The rest of that page removes everything else the guide creates.
+Sections 1 and 3 of [docs/teardown.md](docs/teardown.md) remove the AI Gateway, its data plane and NLB, and the operator. The rest of that page removes everything else the guide creates.
 
 [← Step 1](1-eks-cluster.md) · **Step 2** · [Step 3 →](3-a2a-agent-gateway-agentcore.md)
