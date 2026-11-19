@@ -223,6 +223,8 @@ export AWS_DOMAIN=<your domain> ISSUER_URL=<issuer URL> CLIENT_ID=<client ID> CL
 
 For Step 6's AI Gateway, set `KONG_HOST=ai-dp.<your domain> MODEL=nova-micro MCP_AUTH=1` to test it the same way, including the Bedrock model and the token check on `/mcp`.
 
+To give the Konnect dashboards something to show, [`scripts/traffic.sh`](scripts/traffic.sh) sends a steady mix of accepted and rejected requests (same variables, plus `ROUNDS`). It's demo traffic, not a test.
+
 [docs/demo.md](docs/demo.md) explains each check and gives a five-minute walk-through for showing the setup to someone else.
 
 ## Clean up

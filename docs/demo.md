@@ -30,6 +30,17 @@ Every line should say `PASS`:
 
 Put the exports in a file **outside the repo** and `source` it (it holds a client secret). If your laptop can't resolve `kong-dp.<domain>` yet, the script falls back to the address public DNS returns. You can also set `KONG_IP` yourself.
 
+### Traffic for the dashboards
+
+`verify.sh` sends only one request per check. To fill Konnect's analytics before a demo, run [`scripts/traffic.sh`](../scripts/traffic.sh) for a few minutes beforehand. It sends a mix of accepted (valid token) and rejected (no token, bad token) calls each round, and prints the status codes:
+
+```bash
+ROUNDS=30 ./scripts/traffic.sh
+KONG_HOST=ai-dp.$AWS_DOMAIN MODEL=nova-micro ROUNDS=30 ./scripts/traffic.sh
+```
+
+The first line targets the Steps 1–5 gateway. The second targets Step 6's AI Gateway, including the Bedrock model (each model call costs a fraction of a cent). Give Konnect a few minutes to show the requests.
+
 ## 2. A five-minute walk-through
 
 Have two things open: the `kong-aws` control plane in Konnect (Routes, Plugins, Data Plane Nodes) and the reference architecture diagram in the README.

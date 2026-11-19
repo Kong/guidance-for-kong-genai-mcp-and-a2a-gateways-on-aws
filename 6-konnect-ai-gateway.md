@@ -198,7 +198,13 @@ To run all of these in one go: `KONG_HOST=ai-dp.$AWS_DOMAIN MODEL=nova-micro MCP
 
 ## See it in Konnect
 
-Open **AI Gateway → Gateways → Kong AWS AI Gateway**:
+To have something to look at, send a few minutes of mixed traffic first. Each round makes accepted and rejected calls to `/a2a`, `/mcp` and the model:
+
+```bash
+KONG_HOST=ai-dp.$AWS_DOMAIN MODEL=nova-micro ROUNDS=20 ./scripts/traffic.sh
+```
+
+Then open **AI Gateway → Gateways → Kong AWS AI Gateway**:
 - **Agents**, **MCP Servers**, **Models**, **Providers** and **Auth strategies** show the entities from 6e.
 - **Data plane nodes** shows the EKS pod and its version.
 - The gateway's **Overview** tiles (total requests, average LLM latency, token usage and estimated cost) count **model traffic only**, the calls to `/v1`. They update a few minutes after the calls. Agent and MCP calls don't appear there. Look for them under **Observability**.
