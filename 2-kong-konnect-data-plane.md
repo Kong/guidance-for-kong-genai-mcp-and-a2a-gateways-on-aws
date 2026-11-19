@@ -27,7 +27,9 @@ This step is also where AWS IAM enters the picture. Kong doesn't get AWS access 
 - You have a Kong Konnect account. If you don't, start a [free 30-day trial of Kong Konnect on the AWS Marketplace](https://aws.amazon.com/marketplace/pp/prodview-77nhc3l2cn5im).
 - Replace `<YOUR_AWS_ACCOUNT>` with your AWS account ID.
 
-> **Heads-up about the IAM policy below.** It allows `bedrock:ApplyGuardrail`, `bedrock:InvokeModel`, `secretsmanager:GetSecretValue` and related actions on `"Resource": "*"`. That is broader than you'd use in production. Scope it down to specific resource ARNs before using this in production. Only the AgentCore permissions are exercised by the later steps in this guide.
+> **Heads-up about the IAM policy below.** It allows `bedrock:ApplyGuardrail`, `bedrock:InvokeModel`, `secretsmanager:GetSecretValue` and related actions on `"Resource": "*"`. That is broader than you'd use in production. Scope it down to specific resource ARNs before using this in production. None of the later steps in this guide use it yet: Step 3 reaches AgentCore with OAuth2 tokens, because Kong's AI A2A Proxy plugin can't sign requests with IAM. The role is in place for the LLM Gateway to Bedrock and other AWS calls.
+>
+> **Shared AWS account?** If `bedrock-policy` or `kaigateway-aws-podid-role` already exists, use suffixed names (for example `bedrock-policy-kong314`) and use them consistently, as in Step 1.
 
 ---
 
@@ -66,11 +68,11 @@ aws iam create-policy \
 The **Pod Identity Association** relates a Kubernetes Service Account to an IAM Role/Policy. In our case, the SA is ``kaigateway-podid-sa``.
 
 ```
-kubectl delete namespace kong
-
 kubectl create namespace kong
 kubectl create sa kaigateway-podid-sa -n kong
 ```
+
+If you're re-running this step and the namespace already exists, `kubectl create namespace` reports `AlreadyExists`. That's fine.
 
 ### Define PodIdentityAssociation
 
@@ -112,8 +114,6 @@ kubectl logs -f $(kubectl get pod -n kong-system -o json | jq -r '.items[].metad
 ```
 
 > **Checkpoint.** The `kubectl logs` command above follows the operator's log. Press `Ctrl+C` to stop following it. The operator pod in `kong-system` should be Running before you continue.
->
-> The block that creates the `kong` namespace starts with `kubectl delete namespace kong`. On a fresh cluster that line prints a "not found" error. You can ignore it, because the namespace is created on the next line.
 
 ## Konnect Personal Access Token (PAT)
 
@@ -291,7 +291,7 @@ export LB_HOSTED_ZONE_ID=$(aws elbv2 describe-load-balancers \
   --output text)
 ```
 
-Now, using boths Hosted Zone Ids, create an alias, named ``kong-dp.$AWS-DOMAIN`` to the Load Balancer deployed. Make sure you have the HOSTED_ZONE_ID env variable set as we did in the previous step.
+Now, using both Hosted Zone Ids, create an alias, named ``kong-dp.$AWS_DOMAIN`` to the Load Balancer deployed. Make sure you have the HOSTED_ZONE_ID env variable set as we did in the previous step.
 
 ```
 aws route53 change-resource-record-sets \
@@ -326,6 +326,15 @@ Test HTTP/S:
 curl -i https://kong-dp.$AWS_DOMAIN
 ```
 
+A new DNS name and a new NLB both take a few minutes to settle:
+- **`Could not resolve host`.** Your machine's resolver hasn't picked up the new name yet, even if public DNS has. Check with `dig +short kong-dp.$AWS_DOMAIN @8.8.8.8`. Until your resolver catches up, pin the address for curl:
+  ```
+  export KONG_IP=$(dig +short kong-dp.$AWS_DOMAIN @8.8.8.8 | head -1)
+  curl -i --resolve kong-dp.$AWS_DOMAIN:443:$KONG_IP https://kong-dp.$AWS_DOMAIN
+  ```
+  Add the same `--resolve` option to the `curl` commands in later steps.
+- **`Empty reply from server`.** The NLB accepted the connection but has no healthy target in that zone yet. Wait for the target group to report `healthy` (EC2 console, **Target groups**), then resolve the name again and retry. With one Kong pod and cross-zone load balancing off, NLB addresses in zones without a pod can keep dropping connections, so re-resolve until you get a working address, or add more data plane replicas.
+
 ```
 HTTP/1.1 404 Not Found
 Date: Tue, 28 Apr 2026 18:56:30 GMT
@@ -355,7 +364,6 @@ kubectl delete konnectgatewaycontrolplane kong-aws -n kong
 kubectl delete konnectapiauthconfiguration konnect-api-auth-conf -n kong
 
 
-kubectl delete secret konnect-pat -n kong
 kubectl delete namespace kong
 ```
 ---
@@ -371,6 +379,7 @@ That 404 is the success signal. It proves DNS → NLB → TLS with your ACM cert
 - **`kubectl get ... dataplane` never shows Ready, or the node isn't in Konnect.** Use the two `kubectl logs` commands above (operator and data plane) to see why. A wrong or expired `PAT`, or a Konnect region other than `us` (the guide hard-codes `serverURL: us.api.konghq.com`), are common causes.
 - **`DATA_PLANE_LB` is empty.** The NLB takes a few minutes to provision after the `DataPlane` resource is applied. Wait and re-run the export.
 - **HTTPS fails but HTTP works.** `CERTIFICATE_ARN` was probably not set when you applied the `DataPlane` manifest, so the NLB has no certificate. Check the listeners with the `describe-listeners` command above.
+- **`Could not resolve host` or `Empty reply from server`.** DNS or the NLB targets are still settling. See the notes under [Test the Load Balancers](#test-the-load-balancers).
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-2-kong-konnect-data-plane).
 
 ## Tearing this step down

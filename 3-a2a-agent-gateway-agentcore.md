@@ -4,30 +4,43 @@
 
 ## Why this step
 
-Amazon Bedrock AgentCore is a strong place to *run* agents. It gives you a managed runtime, scaling and IAM-signed (SigV4) invocation. What it doesn't give you on its own is one shared front door that **other agents** (inside AWS, in another cloud or on a laptop) can reach using a plain A2A call, with one set of policies, logs and metrics across all of them.
+Amazon Bedrock AgentCore is a strong place to *run* agents. It gives you a managed runtime, scaling and built-in inbound authentication. What it doesn't give you on its own is one shared front door that **other agents** (inside AWS, in another cloud or on a laptop) can reach using a plain A2A call, with one set of policies, logs and metrics across all of them.
 
-This step builds that front door. You deploy a small A2A agent to AgentCore, then publish it through Kong at `https://kong-dp.<your domain>/a2a`. Kong's **AI A2A Proxy** plugin calls AgentCore for you, and the IAM role from Step 2 (`bedrock-agentcore:InvokeAgentRuntime`, `bedrock-agentcore:GetAgentCard`) authorizes it. Callers don't need AWS credentials, and AgentCore stays private to IAM.
+This step builds that front door. You deploy a small A2A agent to AgentCore, then publish it through Kong at `https://kong-dp.<your domain>/a2a`. Callers don't need AWS credentials. They need an OAuth2 token from **Kong Identity**.
+
+### How Kong reaches AgentCore
+
+An AgentCore runtime accepts **either** IAM (SigV4) signatures **or** JWT bearer tokens for inbound calls, not both ([AWS docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html)). Kong's **AI A2A Proxy** plugin, in Kong Gateway 3.14, can't sign requests with AWS IAM: its configuration has only `max_request_body_size` and `logging` settings. So this step gives the runtime **JWT inbound auth** that trusts tokens issued by Kong Identity:
+
+1. A caller gets a short-lived token from Kong Identity (client credentials grant).
+2. It calls `https://kong-dp.<your domain>/a2a` with that token. Kong forwards the call, token included, to AgentCore.
+3. AgentCore checks the token's issuer, signature and `client_id` before the agent runs.
+
+[Step 5](5-kong-identity-oauth2.md) then makes Kong check the token as well, so invalid calls are stopped at the gateway and never reach AWS.
 
 ## What it does, in plain English
 
 1. **Explains** the A2A flow and Kong's plugins (diagram and background).
 2. **Runs a "hello world" A2A agent on your laptop** (`server_1.py`) and calls it directly, so you can see what A2A requests and responses look like.
-3. **Deploys the same agent to AgentCore** with the AgentCore CLI and calls it with SigV4-signed `awscurl`.
-4. **Publishes it through Kong.** A decK file creates a Kong service pointing at the AgentCore runtime, with the `ai-a2a-proxy` plugin handling AWS IAM auth. You then call it with plain `curl`.
-5. **Shows a second agent** (`client_1.py`) that discovers and talks to the first one through Kong.
+3. **Deploys the same agent to AgentCore** with the AgentCore CLI and calls it with SigV4-signed `awscurl`. This runtime (`agent`) uses AgentCore's default IAM auth, and proves the agent runs on AgentCore.
+4. **Creates the token issuer:** an authorization server, scope, claim and client in Kong Identity.
+5. **Adds a second runtime (`agentjwt`)** with the same code and JWT inbound auth that trusts Kong Identity, and calls it with a bearer token.
+6. **Publishes `agentjwt` through Kong.** A decK file creates a Kong service pointing at that runtime, with the `ai-a2a-proxy` plugin. You then call it with plain `curl` and a token.
+7. **Shows a second agent** (`client_1.py`) that discovers and talks to the first one through Kong.
 
 ## Before you start
 
 - Steps 1 and 2 are complete, and `PAT` and `AWS_DOMAIN` are still exported.
 - Python with the A2A SDK, set up as described in [code/a2a/python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md) (uses `uv`).
-- Node.js/npm for the AgentCore CLI, plus [`awscurl`](https://pypi.org/project/awscurl/) and decK.
+- Node.js/npm for the AgentCore CLI, plus [`awscurl`](https://pypi.org/project/awscurl/), decK and `jwt-cli`.
 - AgentCore available in `us-west-2` for your account.
 
 > **Things to know before you copy commands from this step**
 >
-> - **Hard-coded hostname.** The Kong test request and `client_1.py` use the sample domain `kong-dp.kong-demo.com`. Use `kong-dp.$AWS_DOMAIN` (your domain from Step 1) instead when you run them.
+> - **Tested versions.** This step was last run end to end with Kong Gateway `3.14.0.3`, AgentCore CLI `1.1.0`, `a2a-sdk` `1.3.1` and decK `1.70`. The AgentCore CLI changes quickly, so if a command or file layout differs, check `agentcore <command> --help`.
 > - **Two versions of the agent.** The agent code shown inline below is a simpler version of [`code/a2a/server_1.py`](code/a2a/server_1.py). The file adds middleware that logs request headers and infers the `A2A-Version` header from the request body. The AgentCore deployment copies `server_1.py`, so the file is what actually runs there.
 > - **This step starts from a clean slate.** `deck gateway reset ... -f` deletes all existing configuration on the `kong-aws` control plane before `sync` applies `ai-a2a-proxy.yaml`. Steps 4 and 5 then add to it with `deck gateway apply`, which doesn't delete anything. If you re-run this step later, re-run the `apply` commands in Steps 4 and 5 afterwards.
+> - **Keep one terminal.** The AgentCore, Kong Identity and Kong sections all reuse variables exported earlier in this step (`AGENTCORE_URL`, `ISSUER_URL`, `CLIENT_ID`, `CLIENT_SECRET`, `JWT_URL`), and Step 5 needs them too.
 
 ---
 
@@ -403,7 +416,8 @@ https://github.com/a2aproject/a2a-inspector
 
 # Amazon Bedrock AgentCore
 
-## Deployment
+## Create the project
+
 Let's use the [AgentCore CLI](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-get-started-cli.html) to deploy the agent. Its [GitHub repo](https://github.com/aws/agentcore-cli) has a comprehensive command reference.
 
 ```
@@ -411,152 +425,136 @@ npm install -g @aws/agentcore
 agentcore --version
 ```
 
-Create the new Agent directory structure. The ``defaults`` use the default configuration with Python, Strands, Bedrock, ano no memory.
+Create the project from the A2A Python template. Run this outside this repo, for example in a working folder of your own. Older CLI versions took `--defaults`; current versions take `--template` (`agentcore create --help` lists the templates).
 ```
-agentcore create --name agentcorekong --defaults --region us-west-2
+agentcore create --name agentcorekong --template a2a-python-strands --region us-west-2
+cd agentcorekong
 ```
 
-Copy the Agent code to the right directory
+This creates `agentcore/agentcore.json` (the project spec) and `app/agent/` (the code for a runtime named `agent`). The template's code is a Strands LLM agent. Replace it with this guide's agent, using the path to your clone of this repo:
 ```
-cp ./server_1.py ./agentcorekong/app/agentcorekong
+cp <path-to-this-repo>/code/a2a/server_1.py app/agent/
 ```
 
 ### Agent configuration
 
-Make sure the ``./agentcorekong/app/agentcorekong/pyptoject.toml`` file has the Python dependencies required: ``uvicorn`` and ``a2a-sdk[all]``. Here's an example:
+The template's `app/agent/pyproject.toml` pins `a2a-sdk ~= 0.3`, but `server_1.py` uses the 1.x API (`a2a.helpers`, `a2a.server.routes`), so the agent would crash on start. It also pulls in Strands, which this agent doesn't use. Replace the file:
 
 ```
+cat > app/agent/pyproject.toml << 'EOF'
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling ~= 1.27.0"]
 build-backend = "hatchling.build"
 
 [project]
-name = "agentcorekong"
+name = "agent"
 version = "0.1.0"
-description = "AgentCore Runtime Application using Strands SDK"
+description = "A2A hello world agent for the Kong guide"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "aws-opentelemetry-distro",
-    "bedrock-agentcore >= 1.9.1",
-    "botocore[crt] >= 1.35.0",
-    "mcp >= 1.19.0",
-    "strands-agents >= 1.13.0",
+    "a2a-sdk[all]",
     "uvicorn",
-    "a2a-sdk[all]"
+    "aws-opentelemetry-distro",
+    "bedrock-agentcore",
+    "botocore[crt]",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["."]
+EOF
 ```
 
-Make sure the ``./agentcorekong/agentocore.json`` file has the protocol configured to ``A2A`` and the entrypoint is referring to your code. Here's an example:
+The deployment installs dependencies from `pyproject.toml`. To check the imports on your laptop first (optional), refresh the template's lockfile, which also pins the old SDK:
+```
+cd app/agent
+uv lock --upgrade-package a2a-sdk
+uv sync
+uv run python -c "import a2a.helpers, a2a.server.routes.agent_card_routes; print('imports OK')"
+cd ../..
+```
 
+Point the runtime at `server_1.py` and remove the template's memory store, which this agent doesn't use and which would be billed:
+```
+jq '.memories = [] | .runtimes[0].entrypoint = "server_1.py"' agentcore/agentcore.json > /tmp/ac.json && mv /tmp/ac.json agentcore/agentcore.json
+cat agentcore/agentcore.json
+```
+
+You should see:
 ```
 {
-  "$schema": "https://schema.agentcore.aws.dev/v1/agentcore.json",
   "name": "agentcorekong",
-  "version": 1,
+  "version": 2,
   "managedBy": "CDK",
-  "tags": {
-    "agentcore:created-by": "agentcore-cli",
-    "agentcore:project-name": "agentcorekong"
-  },
   "runtimes": [
     {
-      "name": "agentcorekong",
+      "name": "agent",
       "build": "CodeZip",
+      "modelProvider": "Bedrock",
       "entrypoint": "server_1.py",
-      "codeLocation": "app/agentcorekong/",
+      "codeLocation": "app/agent",
       "runtimeVersion": "PYTHON_3_14",
-      "networkMode": "PUBLIC",
       "protocol": "A2A"
     }
   ],
-  "memories": [],
-  "credentials": [],
-  "evaluators": [],
-  "onlineEvalConfigs": [],
-  "agentCoreGateways": [],
-  "policyEngines": [],
-  "configBundles": [],
-  "abTests": [],
-  "httpGateways": []
+  "memories": []
 }
 ```
 
 ### Deploy the Agent
 
-Deploy the Agent with the AgentCore CLI:
 ```
-cd agentcorekong
-agentcore deploy
+agentcore deploy --region us-west-2
 ```
 
-Typical output is:
-```
-  AgentCore Deploy
-
-  Project: agentcorekong
-  Target: us-west-2:<YOUR_AWS_ACCOUNT>
-
-  [done]    Validate project
-  [done]    Check dependencies
-  [done]    Build CDK project
-  [done]    Synthesize CloudFormation
-  [done]    Check stack status
-  [done]    Computing diff changes...
-  [done]    Publish assets
-
-  ╭────────────────────────────────────────────────╮
-  │ ✓ Deploy to AWS Complete                       │
-  │                                                │
-  │ [████████████████████] 5/5                     │
-  ╰────────────────────────────────────────────────╯
-
-  Deployed 1 stack(s): AgentCore-agentcorekong-default
-
-  Note: Transaction search enabled. It takes ~10 minutes for transaction search to be fully active and for traces from invocations to be indexed.
-
-  Log: agentcore/.cli/logs/deploy/deploy-20260525-173453.log
-
-  Next: Run agentcore invoke to test your agent, or agentcore status to view deployment status
-
-  Esc back · Ctrl+C quit
-```
+The first deploy creates a target named `default` in `agentcore/aws-targets.json` from your current account and region, and bootstraps CDK in the account if it hasn't been. It takes about 5 to 10 minutes and ends with `Deploy to AWS Complete`. If it can't find credentials from an `aws login` session, export them first with `eval "$(aws configure export-credentials --format env)"`.
 
 ## Check the Status
 
-Running ``agentcore status`` you get the URL where the Agent is located.
+`agentcore status` opens an interactive view (press `q` to leave). For scripts, use the JSON form:
 ```
-agentcore status
+agentcore status --json
 ```
 
 Here's an example:
 ```
-AgentCore Status (target: default, us-west-2)
-
-Agents
-  agentcorekong: Deployed - Runtime: READY (arn:aws:bedrock-agentcore:us-west-2:<YOUR_AWS_ACCOUNT>:runtime/agentcorekong_agentcorekong-mU6f9tFT0B)
-  URL: https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/arn%3Aaws%3Abedrock-agentcore%3Aus-west-2%3A481711488351%3Aruntime%2Fagentcorekong_agentcorekong-hJOstcE91q/invocations
+{
+  "projectName": "agentcorekong",
+  "target": "default",
+  "region": "us-west-2",
+  "resources": [
+    {
+      "resourceType": "runtime",
+      "name": "agent",
+      "deploymentState": "deployed",
+      "arn": "arn:aws:bedrock-agentcore:us-west-2:<YOUR_AWS_ACCOUNT>:runtime/agentcorekong_default_agent-XXXXXXXXXX"
+    }
+  ]
+}
 ```
 
-You can also check the Agent with an AWS CLI command:
+The CLI doesn't print the invocation URL, so build it from the runtime ARN (URL-encoded):
 ```
-export AGENTCORE_IDENTIFIER=$(agentcore status --json | jq -r '.resources[0].identifier | split("/")[-1]')
+export AGENTCORE_ARN=$(agentcore status --json | jq -r '.resources[] | select(.name=="agent") | .arn')
+export AGENTCORE_IDENTIFIER="${AGENTCORE_ARN##*/}"
+export AGENTCORE_URL="https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/$(jq -rn --arg a "$AGENTCORE_ARN" '$a|@uri')/invocations"
+echo $AGENTCORE_URL
+```
 
+Check that the runtime is ready:
+```
 aws bedrock-agentcore-control get-agent-runtime \
   --agent-runtime-id $AGENTCORE_IDENTIFIER \
-  --region us-west-2
+  --region us-west-2 --query status --output text
 ```
 
-## Get the AgentCore URL with
-```
-export AGENTCORE_URL=$(agentcore status --json | jq -r '.resources[0].invocationUrl')
-```
+It should print `READY`.
 
-## Discovery Endpoint
+## Call it with SigV4
 
+This runtime uses AgentCore's default inbound auth, so every request must be SigV4-signed. Use [**awscurl**](https://pypi.org/project/awscurl/), which signs with your local AWS credentials.
+
+Discovery endpoint:
 ```
 awscurl \
   --service bedrock-agentcore \
@@ -564,11 +562,7 @@ awscurl \
   $AGENTCORE_URL/.well-known/agent-card.json
 ```
 
-## Send a request
-
-All requests should be SigV4 signed. Use [**awscurl**](https://pypi.org/project/awscurl/) to send them. Make sure you run ``aws configure`` to configure you local environment with your AWS Access and Secret Keys.
-
-Send a request
+Send a request:
 ```
 awscurl -X POST \
   $AGENTCORE_URL \
@@ -620,30 +614,134 @@ awscurl -X POST \
   }' | jq
 ```
 
-If you want to delete the Agent run:
-```
-agentcore remove all -y
-agentcore deploy
-```
-
 ## Check the Agent logs
 
-Get the Log Group Name:
 ```
-export LOGGROUPNAME=$(echo "/aws/bedrock-agentcore/runtimes/$AGENTCORE_IDENTIFIER-DEFAULT")
+export LOGGROUPNAME="/aws/bedrock-agentcore/runtimes/$AGENTCORE_IDENTIFIER-DEFAULT"
 
 aws logs tail $LOGGROUPNAME \
   --follow \
   --region us-west-2
 ```
 
-> **Checkpoint: the agent works on AgentCore.** `agentcore status` shows `Runtime: READY`, and the signed `awscurl` request returns the same `that's the response` artifact you saw locally. Make sure `AGENTCORE_URL` is exported in your shell, because the next section builds the Kong configuration from it.
+A Python traceback here usually means a missing dependency or an import error. Check `pyproject.toml` first.
 
-**What the next section does.** The first command strips the host from `AGENTCORE_URL` and keeps only the path, which identifies your runtime. The `cat > ai-a2a-proxy.yaml` block writes a decK file that defines:
+> **Checkpoint: the agent works on AgentCore.** `get-agent-runtime` prints `READY`, and the signed `awscurl` request returns the same `that's the response` artifact you saw locally.
+
+# Kong Identity: the token issuer AgentCore will trust
+
+Kong can't produce the SigV4 signature the `agent` runtime requires, so Kong will front a second runtime that accepts JWT bearer tokens instead. That runtime needs to know which issuer to trust, so create the issuer first: an authorization server in **Kong Identity**, the OAuth2 server built into Konnect. Step 5 explores it in more detail.
+
+The commands use the [Kong Identity API](https://developer.konghq.com/api/konnect/kong-identity) in the Konnect **US** region, and take each ID straight from its create response.
+
+Create the authorization server:
+```
+AUTHZ_JSON=$(curl -s -X POST https://us.api.konghq.com/v1/auth-servers \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"AuthZ_Server_1","audience":"http://kong.dev","description":"AuthZ Server 1"}')
+echo "$AUTHZ_JSON" | jq '{id, name, audience, issuer}'
+export AUTHZ_SERVER_ID=$(echo "$AUTHZ_JSON" | jq -r .id)
+export ISSUER_URL=$(echo "$AUTHZ_JSON" | jq -r .issuer)
+```
+
+You should see an `id` and an issuer like `https://xxxxxx.us.identity.konghq.com/auth`. Authorization server names are unique per organization and region, so if the name is taken, pick another.
+
+Add a scope and a custom claim:
+```
+SCOPE_JSON=$(curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/scopes" \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"scope1","description":"scope1","default":false,"include_in_metadata":false,"enabled":true}')
+echo "$SCOPE_JSON" | jq '{id, name}'
+export SCOPE_ID=$(echo "$SCOPE_JSON" | jq -r .id)
+```
+
+```
+curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/claims" \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"claim1","value":"claim1","include_in_token":true,"include_in_all_scopes":false,"include_in_scopes":["'$SCOPE_ID'"],"enabled":true}' | jq '{id, name}'
+```
+
+Create the client, the machine-to-machine credential callers will use. Its tokens last **900 seconds (15 minutes)**: AgentCore rejects any token that expires within about a minute (`Ineffectual token, will expire within the next minute`), so a 60-second token would always fail.
+```
+CLIENT_JSON=$(curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/clients" \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"client1","grant_types":["client_credentials"],"allow_all_scopes":false,"allow_scopes":["'$SCOPE_ID'"],"access_token_duration":900,"id_token_duration":900,"response_types":["id_token","token"]}')
+echo "$CLIENT_JSON" | jq 'del(.client_secret)'
+export CLIENT_ID=$(echo "$CLIENT_JSON" | jq -r .id)
+export CLIENT_SECRET=$(echo "$CLIENT_JSON" | jq -r .client_secret)
+echo "secret length: ${#CLIENT_SECRET}"
+```
+
+Konnect shows the client secret only once, and these commands keep it in your shell rather than on screen. If you lose it, create a new client.
+
+Get a token and check the claims AgentCore will validate:
+```
+TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" -d "client_id=$CLIENT_ID" \
+  -d "client_secret=$CLIENT_SECRET" -d "scope=scope1" | jq -r '.access_token')
+echo $TOKEN | jwt decode - | sed -n '/Token claims/,$p'
+curl -s $ISSUER_URL/.well-known/openid-configuration | jq '{issuer, jwks_uri}'
+```
+
+The token's `iss` must equal the `issuer` in the discovery document, and `client_id` must equal `$CLIENT_ID`. `exp` minus `iat` should be `900`.
+
+# A second runtime that accepts Kong Identity tokens
+
+Add a runtime named `agentjwt` to the same project, with a custom JWT authorizer. AgentCore fetches Kong Identity's signing keys from the discovery URL and accepts only tokens issued to your client. The CLI spells the key `customJwtAuthorizer`, while the AWS API spells it `customJWTAuthorizer`.
+
+```
+AUTH_CFG=$(jq -nc --arg d "$ISSUER_URL/.well-known/openid-configuration" --arg c "$CLIENT_ID" \
+  '{customJwtAuthorizer:{discoveryUrl:$d,allowedClients:[$c]}}')
+echo "$AUTH_CFG"
+
+agentcore add runtime --name agentjwt --language python --protocol A2A \
+  --authorizer-type CUSTOM_JWT --authorizer-configuration "$AUTH_CFG"
+```
+
+The command writes only template docs into `app/agentjwt/`. Give it the same code and dependencies as the first runtime, and point its entrypoint at `server_1.py`:
+```
+cp app/agent/server_1.py app/agentjwt/
+sed 's/^name = "agent"/name = "agentjwt"/' app/agent/pyproject.toml > app/agentjwt/pyproject.toml
+jq '.runtimes |= map(if .name=="agentjwt" then .entrypoint="server_1.py" else . end)' agentcore/agentcore.json > /tmp/ac.json && mv /tmp/ac.json agentcore/agentcore.json
+jq '.runtimes[] | {name, entrypoint, authorizerType, authorizerConfiguration}' agentcore/agentcore.json
+```
+
+You should see `agent` with no authorizer and `agentjwt` with `"authorizerType": "CUSTOM_JWT"`, your discovery URL and your client ID, both with `server_1.py`.
+
+Deploy again. This adds the second runtime and leaves the first as it is:
+```
+agentcore deploy --region us-west-2
+```
+
+Build the new runtime's URL:
+```
+export JWT_ARN=$(agentcore status --json | jq -r '.resources[] | select(.name=="agentjwt") | .arn')
+export JWT_URL="https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/$(jq -rn --arg a "$JWT_ARN" '$a|@uri')/invocations"
+echo $JWT_URL
+```
+
+Call it **directly**, with a bearer token and no SigV4 signature. Fetch a fresh token first:
+```
+TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" -d "client_id=$CLIENT_ID" \
+  -d "client_secret=$CLIENT_SECRET" -d "scope=scope1" | jq -r '.access_token')
+
+curl -s -X POST "$JWT_URL" \
+  -H "Authorization: Bearer $TOKEN" \
+  --json '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"hi"}]}}}' | jq
+```
+
+The result contains the `that's the response` artifact. No session ID header is needed.
+
+> **Checkpoint: AgentCore trusts Kong Identity.** The `agentjwt` runtime answers a bearer-token call. From here on, the SigV4 `agent` runtime isn't used. You can keep it for comparison or remove it (see [Tearing this step down](#tearing-this-step-down)).
+
+**What the next section does.** The first command strips the host from `JWT_URL` and keeps only the path, which identifies the `agentjwt` runtime. The `cat > ai-a2a-proxy.yaml` block writes a decK file that defines:
 
 - a Kong **service** `a2a-agentcore` pointing at `bedrock-agentcore.us-west-2.amazonaws.com` plus that path,
 - a **route** `a2a-route` that answers on `/a2a`,
-- the **`ai-a2a-proxy`** plugin, set to authenticate to AWS with IAM (`provider: "aws_iam"`) and to log A2A statistics and payloads.
+- the **`ai-a2a-proxy`** plugin, set to log A2A statistics and payloads. It has no upstream authentication settings, so the caller's `Authorization` header passes through to AgentCore unchanged.
 
 `deck gateway sync` then pushes it to the `kong-aws` control plane, and Konnect hands it to your data plane on EKS.
 
@@ -652,8 +750,11 @@ aws logs tail $LOGGROUPNAME \
 ## Kong AI A2A Proxy Plugin
 
 ```
-export DECK_AGENTCORE_PATH="${AGENTCORE_URL#*bedrock-agentcore.us-west-2.amazonaws.com}"
+export DECK_AGENTCORE_PATH="${JWT_URL#*bedrock-agentcore.us-west-2.amazonaws.com}"
+echo $DECK_AGENTCORE_PATH
 ```
+
+It should print a path starting with `/runtimes/arn%3Aaws` and ending in `/invocations`.
 
 ```
 cat > ai-a2a-proxy.yaml << 'EOF'
@@ -677,10 +778,6 @@ services:
         instance_name: ai-a2a-proxy1
         enabled: true
         config:
-          auth:
-            provider: "aws_iam"
-            aws_iam:
-              aws_region: "us-west-2"
           max_request_body_size: 0
           logging:
             log_statistics: true
@@ -698,11 +795,20 @@ deck gateway reset --konnect-control-plane-name kong-aws --konnect-token $PAT -f
 deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT ai-a2a-proxy.yaml
 ```
 
+The `sync` should report `Created: 3` (service, route and plugin).
+
 ## Send a request
 
+Wait about 10 seconds for Konnect to push the configuration, get a fresh token, then call the agent through Kong:
+
 ```
-curl -sX POST https://kong-dp.kong-demo.com/a2a \
-     -H "Content-Type: application/json" \
+TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" -d "client_id=$CLIENT_ID" \
+  -d "client_secret=$CLIENT_SECRET" -d "scope=scope1" | jq -r '.access_token')
+
+curl -sX POST https://kong-dp.$AWS_DOMAIN/a2a \
+     -H "Authorization: Bearer $TOKEN" \
      --json '{
        "jsonrpc": "2.0",
        "id": "1",
@@ -723,9 +829,18 @@ curl -sX POST https://kong-dp.kong-demo.com/a2a \
      }' | jq
 ```
 
-> **Checkpoint: the agent works through Kong.** The `curl` to `/a2a` (with your own domain in place of `kong-demo.com`) returns the same artifact as the direct AgentCore call. This time no AWS signature is needed on the client side, because Kong signs the call to AgentCore using its Pod Identity role.
+Now send the same request **without** the `Authorization` header. AgentCore refuses it:
+```
+{"jsonrpc":"2.0","error":{"code":-32001,"message":"Missing Authentication Token"}}
+```
 
-The code below is the same as [`code/a2a/client_1.py`](code/a2a/client_1.py). Set it up as "Agent 2" in [python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md), and point `base_url` at your own domain. It resolves the Agent Card through Kong, then lets you chat with the AgentCore agent.
+At this point Kong passes every request through and only AgentCore checks the token. [Step 5](5-kong-identity-oauth2.md) adds the check at the gateway.
+
+> **Checkpoint: the agent works through Kong.** With a token, the `curl` to `https://kong-dp.$AWS_DOMAIN/a2a` returns the same artifact as the direct call. The caller needs no AWS credentials, only a Kong Identity token.
+
+The code below is the same as [`code/a2a/client_1.py`](code/a2a/client_1.py). Set it up as "Agent 2" in [python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md), and point `base_url` at `https://kong-dp.<your domain>/a2a`. It resolves the Agent Card through Kong, then lets you chat with the AgentCore agent.
+
+> **Not yet updated for tokens.** `client_1.py` doesn't send an `Authorization` header, so AgentCore (and, after Step 5, Kong) rejects its calls. To use it, add the header to the `httpx.AsyncClient`, for example `headers={"Authorization": f"Bearer {token}"}`. This hasn't been tested yet.
 
 # The second Agent
 
@@ -801,21 +916,26 @@ asyncio.run(main())
 
 ## Verify
 
-A plain, unsigned `curl -sX POST https://kong-dp.<your domain>/a2a ...` (the "Send a request" command under *Kong Agent Gateway*) returns a JSON-RPC result whose artifact text is `that's the response`.
+A `curl -sX POST https://kong-dp.<your domain>/a2a ...` with a fresh Kong Identity token (the "Send a request" command under *Kong Agent Gateway*) returns a JSON-RPC result whose artifact text is `that's the response`. Without a token, the call returns `Missing Authentication Token`.
 
-That single response proves the whole chain: Kong on EKS received the call, the `ai-a2a-proxy` plugin authenticated to AgentCore with the Pod Identity IAM role, and the agent on AgentCore answered.
+That pair of responses proves the whole chain: Kong on EKS received the call and forwarded it, AgentCore validated the Kong Identity token, and the agent answered.
 
 ## Common problems
 
-- **`agentcore deploy` succeeds but `awscurl` returns 403.** `awscurl` signs with your local AWS credentials. Run `aws configure` first. Make sure those credentials are allowed to invoke the runtime.
-- **Kong returns 401/403 from AgentCore.** The Kong pod's IAM role needs `bedrock-agentcore:InvokeAgentRuntime` and `bedrock-agentcore:GetAgentCard`. Check that the Pod Identity association from Step 2 targets the `kaigateway-podid-sa` service account in the `kong` namespace.
+- **`agentcore create` says `--defaults` is unknown.** Current CLI versions use `--template`. Run `agentcore create --help` for the list.
+- **The runtime starts, then crashes with `No module named 'a2a.helpers'`.** The template pins `a2a-sdk` 0.3.x. Replace `pyproject.toml` as shown above. Locally, also run `uv lock --upgrade-package a2a-sdk`.
+- **`agentcore add runtime` says `authorizerConfiguration with customJwtAuthorizer is required`.** The JSON key must be spelled `customJwtAuthorizer` for the CLI.
+- **A direct or Kong call returns `Ineffectual token, will expire within the next minute`.** The client's tokens are too short-lived. Set `access_token_duration` to 900 or more (a `PATCH` on the client, with the same fields as the create call) and fetch a new token.
+- **`deck gateway sync` fails with `validation error: unknown field` on `ai-a2a-proxy`.** The config contains an `auth:` block. This plugin has no upstream auth settings in Kong 3.14. Remove the block.
+- **Kong returns `Missing Authentication Token`.** The request had no `Authorization: Bearer` header, or the token wasn't issued to the client in the runtime's `allowedClients`.
+- **`awscurl` returns 403.** `awscurl` signs with your local AWS credentials. Make sure they're set (`aws configure`, or export them from an `aws login` session) and allowed to invoke the runtime.
 - **Kong returns 404 "no Route matched".** The configuration hasn't reached the data plane yet, or `deck gateway sync` failed. Re-run this step's `deck gateway sync` and check its output.
-- **`DECK_AGENTCORE_PATH` is empty.** `AGENTCORE_URL` wasn't exported in the same shell. Re-run the `export AGENTCORE_URL=...` command.
+- **`DECK_AGENTCORE_PATH` is empty.** `JWT_URL` wasn't exported in the same shell. Re-run the `export JWT_ARN=...` and `export JWT_URL=...` commands.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-3-a2a-and-agentcore).
 
 ## Tearing this step down
 
-The "If you want to delete the Agent run" block (`agentcore remove all -y`, then `agentcore deploy`) removes the AgentCore runtime.
+`agentcore remove all -y`, then `agentcore deploy`, removes both runtimes (this teardown hasn't been re-tested with two runtimes). Delete the `AuthZ_Server_1` authorization server in Konnect (**Identity**) once you've finished Step 5.
 
 [← Step 2](2-kong-konnect-data-plane.md) · **Step 3** · [Step 4 →](4-mcp-gateway.md)
 

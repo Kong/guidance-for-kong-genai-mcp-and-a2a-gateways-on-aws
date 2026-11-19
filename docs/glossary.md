@@ -20,7 +20,7 @@ These are plain-language definitions for every acronym and product term used in 
 | **AI Semantic Cache plugin** | Kong plugin that returns a stored response when a new prompt means the same as an earlier one. It uses Redis (on AWS: MemoryDB or ElastiCache) as the vector store. |
 | **ALB / NLB** | Application Load Balancer / Network Load Balancer, AWS's managed load balancers. This guide uses an **NLB** in front of Kong. |
 | **AWS Load Balancer Controller** | A Kubernetes add-on that creates AWS load balancers when a Kubernetes service asks for one. Installed in Step 1. |
-| **awscurl** | A `curl`-like tool that signs requests with your AWS credentials (SigV4). Step 3 uses it to call AgentCore directly. |
+| **awscurl** | A `curl`-like tool that signs requests with your AWS credentials (SigV4). Step 3 uses it to call the SigV4 AgentCore runtime directly. |
 | **CLI** | Command-line interface: a tool you run by typing commands in a terminal. |
 | **Client credentials grant** | An OAuth2 flow for machine-to-machine access: a client trades its ID and secret for an access token. Step 5 uses it. |
 | **CloudWatch (Amazon CloudWatch)** | AWS's logs, metrics and alarms service. AgentCore writes its runtime logs here. |
@@ -36,16 +36,16 @@ These are plain-language definitions for every acronym and product term used in 
 | **ElastiCache / MemoryDB** | AWS's managed Redis-compatible services. The reference architecture uses **MemoryDB for Redis** for Kong's semantic features. |
 | **FinOps** | The practice of managing and attributing cloud spend. |
 | **Guardrails (Amazon Bedrock Guardrails)** | AWS service that checks prompts and responses for harmful content, denied topics, PII and more. Its standalone **ApplyGuardrail** API works with models outside Bedrock too. |
-| **httpbin** | A public test API (`httpbin.konghq.com`) that echoes back the request it receives. Step 4's MCP tools call it so you can see exactly what Kong sent. |
+| **httpbin** | A test API that echoes back the request it receives. Step 4 runs one (go-httpbin) inside the cluster, and its MCP tools call it so you can see exactly what Kong sent. |
 | **Helm** | A package manager for Kubernetes. It installs the Load Balancer Controller and the Kong Operator. |
 | **Hosted zone** | A Route 53 container for the DNS records of one domain. |
 | **IAM (AWS Identity and Access Management)** | AWS's permission system. Kong's AWS access in this guide is defined entirely by an IAM policy. |
 | **IdP (Identity Provider)** | A service that issues identity tokens. Kong Identity is the IdP in Step 5. |
 | **Introspection** | An OAuth2 endpoint where a gateway asks the IdP "is this token still valid, and what does it allow?" Step 5's OpenID Connect plugin uses it. |
 | **JSON-RPC** | A simple request/response format in JSON (`method`, `params`, `id`). Both MCP and A2A use it. |
-| **JWT (JSON Web Token)** | A signed token format for access tokens. `jwt-cli` decodes them in Step 5. |
+| **JWT (JSON Web Token)** | A signed token format for access tokens. AgentCore can validate them as inbound auth (Step 3), and `jwt-cli` decodes them. |
 | **k9s** | A terminal UI for watching Kubernetes resources. Optional. |
-| **Kong Identity** | Kong's OAuth2 authorization server, built into Konnect. Configured in Step 5. |
+| **Kong Identity** | Kong's OAuth2 authorization server, built into Konnect. Issues the tokens AgentCore trusts (Step 3) and that Kong checks (Step 5). |
 | **Kong Konnect** | Kong's SaaS platform: the control plane, analytics, Kong Identity and more. |
 | **Kong Operator** | A Kubernetes controller that creates Konnect control planes and Kong data planes from Kubernetes YAML. Installed in Step 2. |
 | **kubectl** | The standard CLI for Kubernetes. |
@@ -61,12 +61,12 @@ These are plain-language definitions for every acronym and product term used in 
 | **OTel (OpenTelemetry)** | An open standard for traces, metrics and logs. Kong's OTel plugin exports to any compatible backend. |
 | **PAT (Personal Access Token)** | A token you generate in Konnect so that CLIs (Kong Operator, decK, `curl`) can call Konnect APIs as you. |
 | **PII** | Personally identifiable information. |
-| **Pod Identity (EKS Pod Identity)** | EKS feature that gives pods an IAM role without static keys. Kong uses it to call AWS services. |
+| **Pod Identity (EKS Pod Identity)** | EKS feature that gives pods an IAM role without static keys. Kong's IAM role for AWS services (such as Bedrock) comes through it. |
 | **Route / service (Kong)** | A **service** is an upstream Kong forwards to. A **route** is the path or host rule that sends requests to it. Plugins attach to either. |
 | **Route 53 (Amazon Route 53)** | AWS's DNS and domain registration service. |
 | **SAT (System Access Token)** | A Konnect token owned by a system account rather than a person. An alternative to a PAT. |
 | **Secrets Manager (AWS Secrets Manager)** | AWS service for storing and rotating credentials. |
-| **SigV4** | AWS Signature Version 4, the way requests to AWS APIs are signed with IAM credentials. AgentCore requires it. |
+| **SigV4** | AWS Signature Version 4, the way requests to AWS APIs are signed with IAM credentials. AgentCore runtimes use it by default. Kong's AI A2A Proxy plugin can't produce it, which is why Step 3's runtime uses JWT inbound auth. |
 | **Strands** | An open-source agent SDK from AWS. The AgentCore CLI's default template uses it. |
 | **Streamable HTTP** | The MCP transport that runs over ordinary HTTP POST requests, with optional `text/event-stream` responses. Step 4's `/mcp` endpoint uses it. |
 | **TLS** | Transport Layer Security, the "S" in HTTPS. |

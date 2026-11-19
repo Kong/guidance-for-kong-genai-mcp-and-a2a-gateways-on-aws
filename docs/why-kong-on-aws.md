@@ -60,11 +60,11 @@ Kong adds to your AWS footprint. It doesn't route around it. Here is what this r
 | AWS service | How this guide uses it | Where |
 |---|---|---|
 | **Amazon EKS** | Runs the Kong data plane as pods, managed by the Kong Operator. | Steps 1–2 |
-| **EKS Pod Identity + IAM** | The only way Kong gets AWS permissions. The `bedrock-policy` lists exactly which Bedrock, AgentCore and Secrets Manager actions Kong may call. | Step 2 |
+| **EKS Pod Identity + IAM** | The only way Kong gets AWS permissions. The `bedrock-policy` lists exactly which Bedrock, AgentCore and Secrets Manager actions Kong may call. No step uses it yet. | Step 2 |
 | **Network Load Balancer** | Created by the AWS Load Balancer Controller as Kong's public entry point. | Steps 1–2 |
 | **AWS Certificate Manager** | Wildcard certificate on the NLB's 443 listener, issued and renewed by AWS. | Steps 1–2 |
 | **Route 53** | Domain registration, DNS validation for ACM, and the `kong-dp.<domain>` alias to the NLB. | Steps 1–2 |
-| **Bedrock AgentCore** | Hosts the A2A agent. Kong calls it with AWS IAM auth, so callers don't need AWS credentials. | Step 3 |
+| **Bedrock AgentCore** | Hosts the A2A agent. Its JWT inbound auth trusts Kong Identity tokens, which Kong also checks, so callers don't need AWS credentials. | Steps 3, 5 |
 | **CloudWatch** | AgentCore runtime logs (`aws logs tail`). | Step 3 |
 | **Amazon Bedrock + Guardrails** | IAM permissions are granted (`bedrock:InvokeModel`, `bedrock:ApplyGuardrail`). Shown in the reference architecture, but no route is configured yet. | Step 2 (permissions only) |
 | **Secrets Manager** | IAM permissions are granted (`secretsmanager:GetSecretValue`). The reference architecture stores provider credentials and certificates here. | Step 2 (permissions only) |

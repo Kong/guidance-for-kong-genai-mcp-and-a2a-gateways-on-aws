@@ -20,11 +20,14 @@ This step builds only AWS resources. Nothing Kong-specific exists yet.
 
 ## Before you start
 
-- AWS CLI configured for an account where you can create EKS clusters, IAM policies, Route 53 domains and ACM certificates.
+- AWS CLI configured for an account where you can create EKS clusters, IAM policies **and roles**, Route 53 domains and ACM certificates. A role without IAM write access (some "PowerUser" roles) fails at the first `create-policy`.
 - `eksctl`, `kubectl`, `helm`, `jq` and `curl` installed (see the [Prerequisites](README.md#prerequisites) table).
 - Your AWS account ID, which you'll need in place of `<YOUR_AWS_ACCOUNT_ID>`.
+- Optional: `export AWS_PAGER=""`, so AWS CLI output prints straight to the terminal instead of opening a pager.
 
 > **Read before you copy.** The commands below use the names `kong314`, `us-west-2` and `kong-aws-ai-guidance.com` as written. If you change any of them, change them in every later command too.
+>
+> **Shared AWS account?** IAM policy names are global to the account. If `create-policy` fails with `EntityAlreadyExists`, someone already created a policy with that name, and it may be an outdated version. Add a suffix such as `-kong314` to the policy name, and use the same name in the `--permission-policy-arns` value and in [Clean up](README.md#clean-up).
 
 ---
 
@@ -67,7 +70,12 @@ aws iam create-policy \
 
 #### Install AWS Load Balancer Controller
 
-Use your AWS account to create the **Pod Identity** association and install the **Load Balancer Controller**.
+Use your AWS account to create the **Pod Identity** association and install the **Load Balancer Controller**. First add the AWS EKS Helm chart repository:
+
+```
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update eks
+```
 
 ```
 eksctl create podidentityassociation \
@@ -87,15 +95,29 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller -n ku
   --set serviceAccount.name=aws-load-balancer-controller
 ```
 
-> **Checkpoint.** At this point the cluster exists and the Load Balancer Controller is installed in `kube-system`. A quick way to look is `k9s` (see Prerequisites): open the `kube-system` namespace and look for `aws-load-balancer-controller` pods in the Running state.
->
-> The `helm install` above uses the chart reference `eks/aws-load-balancer-controller`. This guide doesn't include a `helm repo add eks ...` command. If Helm says it can't find the `eks` repository, see [Troubleshooting](docs/troubleshooting.md#helm-cannot-find-the-eks-chart-repository).
+> **Checkpoint.** At this point the cluster exists and the Load Balancer Controller is installed in `kube-system`. Check with `kubectl -n kube-system get deployment aws-load-balancer-controller`, or with `k9s` (see Prerequisites): open the `kube-system` namespace and look for `aws-load-balancer-controller` pods in the Running state.
 
 ## Amazon Route53 Public Domain
 
 The AI Agents will consume **Kong AI Gateway**, over a public AWS NLB (Network Load Balancer), using HTTP/S. The instructions below describe how to prepare your AWS environment to expose the NLB in a Public Domain.
 
 Make sure you have a Registered Domain, so we can issue a Digital Certificate to be used by the NLB. If you don't have one you can follow the instructions presented in this section.
+
+### Using a domain you already have
+
+If you already have a domain with a **public** hosted zone in Route 53, skip the registration commands below: set `AWS_DOMAIN` to it and continue at [AWS Certificate Manager](#aws-certificate-manager). First check that the internet actually reaches that zone, because ACM validation silently waits forever otherwise:
+
+```
+export AWS_DOMAIN=<your domain>
+dig NS $AWS_DOMAIN @8.8.8.8 +short
+aws route53 get-hosted-zone --id $(aws route53 list-hosted-zones \
+  --query "HostedZones[?Name=='$AWS_DOMAIN.'].Id" --output text | cut -d'/' -f3) \
+  --query "DelegationSet.NameServers" --output text
+```
+
+Both commands must list the same name servers. If `dig` returns nothing (`NXDOMAIN`), or different name servers, the domain isn't delegated to that zone (for example, an expired registration or a zone left over from an old setup). Fix the delegation at the registrar, or pick another domain.
+
+### Registering a new domain
 
 Set the environment variable with the Domain to be register
 ```
@@ -142,22 +164,19 @@ aws route53domains get-operation-detail \
 Issue a Digital Certificate for the Domain with **AWS Certificate Manager (ACM)**. The Digital Certificate will be used during the Kong AI Gateway Data Plane deployment time. It will be attached to the NLB provisioned alongside the Data Plane deployment.
 
 ```
-aws acm request-certificate \
+export CERTIFICATE_ARN=$(aws acm request-certificate \
   --domain-name "*.${AWS_DOMAIN}" \
   --validation-method DNS \
-  --region us-west-2
+  --region us-west-2 \
+  --query CertificateArn --output text)
+echo $CERTIFICATE_ARN
 ```
+
+This keeps the ARN of the certificate you just requested. Looking it up later by domain name returns several ARNs if an older request for the same name exists.
 
 #### Update the Route 53 Domain
 
-You need to update the Route 53 domain with the CNAME Record Name and Record Value that AWS ACM generated for DNS validation of your certificate.
-
-Get the Certificate ARN
-```
-export CERTIFICATE_ARN=$(aws acm list-certificates --region us-west-2 \
-  --output json | \
-  jq -r ".CertificateSummaryList[] | select(.DomainName == \"*.${AWS_DOMAIN}\") | .CertificateArn")
-```
+You need to update the Route 53 domain with the CNAME Record Name and Record Value that AWS ACM generated for DNS validation of your certificate. ACM can take a few seconds to generate them, so if the next commands print empty values, wait and re-run them.
 
 Get both CNAME Record Name and Record Value:
 ```
@@ -186,7 +205,7 @@ aws route53 change-resource-record-sets \
   --hosted-zone-id $HOSTED_ZONE_ID \
   --change-batch '{
     "Changes": [{
-      "Action": "CREATE",
+      "Action": "UPSERT",
       "ResourceRecordSet": {
         "Name": "'"$RESOURCE_RECORD_NAME"'",
         "Type": "CNAME",
@@ -197,11 +216,17 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
+`UPSERT` creates the record, or updates it if you re-run the command.
+
+To check that public DNS can see the record (this is what ACM checks):
+```
+dig +short CNAME $RESOURCE_RECORD_NAME @8.8.8.8
+```
+
 Make sure the Digital Certificate has been issued with:
 ```
-aws acm list-certificates \
-  --region us-west-2 | \
-  jq -r ".CertificateSummaryList[] | select(.DomainName == \"*.${AWS_DOMAIN}\") | .Status"
+aws acm describe-certificate --certificate-arn $CERTIFICATE_ARN \
+  --region us-west-2 --query Certificate.Status --output text
 ```
 
 You should see:
@@ -231,7 +256,9 @@ Keep this terminal open. Step 2 uses the `AWS_DOMAIN`, `CERTIFICATE_ARN` and `HO
 
 ## Common problems
 
-- **The certificate stays `PENDING_VALIDATION`.** ACM can't see the CNAME yet. Check that the domain registration operation has finished (the `get-operation-detail` command) and that the CNAME was created in the right hosted zone.
+- **The certificate stays `PENDING_VALIDATION`.** ACM can't see the CNAME yet. Check that the domain registration operation has finished (the `get-operation-detail` command), that the CNAME was created in the right hosted zone, and that the domain is delegated to that zone (the `dig NS` check under [Using a domain you already have](#using-a-domain-you-already-have)). `dig +short CNAME $RESOURCE_RECORD_NAME @8.8.8.8` must return the validation value.
+- **`helm install` says it can't find the `eks` repository.** Run the `helm repo add eks ...` command above first.
+- **`create-policy` fails with `EntityAlreadyExists`.** The policy name is taken in this account. Use a suffixed name (see the note at the top).
 - **Route 53 domain commands fail in `us-west-2`.** The Route 53 Domains API is only available in `us-east-1`, which is why those commands pass `--region us-east-1`, while ACM and EKS use `us-west-2`.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-1-eks-and-networking).
 

@@ -14,17 +14,17 @@ The MCP Gateway pattern puts Kong between agents and tools. Agents talk MCP to K
 2. **Publishes an MCP server on Kong** at `https://kong-dp.<your domain>/mcp`. Kong's **AI MCP Proxy** plugin, in `conversion-listener` mode, turns two REST endpoints into two MCP tools: `check-inventory` and `list-orders`.
 3. **Calls it like an MCP client would.** You initialize a session, list the tools and call one.
 
-The REST API behind the tools is Kong's public echo service, `httpbin.konghq.com`. It returns whatever request it receives, so you don't need to deploy a backend, and you can see exactly what Kong sent when an agent called a tool.
+The REST API behind the tools is a small echo service ([go-httpbin](https://github.com/mccutchen/go-httpbin)) that you run inside the cluster. It returns whatever request it receives, so you can see exactly what Kong sent when an agent called a tool. It runs in-cluster rather than on the public internet because a Kong data plane that enforces upstream TLS verification can't always verify public test services (see [Common problems](#common-problems)).
 
 This step **adds** to Kong's configuration with `deck gateway apply`, which creates or updates entities without deleting anything. Step 3's `/a2a` route keeps working.
 
 ## Before you start
 
-- Steps 2 and 3 are complete. `PAT` and `AWS_DOMAIN` are exported.
+- Steps 2 and 3 are complete. `PAT` and `AWS_DOMAIN` are exported, and `kubectl` points at the `kong314` cluster.
 - decK is installed and has the `deck gateway apply` command (`deck gateway apply --help` shows its usage).
 - The data plane image from Step 2 (`kong/kong-gateway:3.14.0.3`) meets the plugin's minimum version (Kong Gateway 3.12).
 
-> **Test before you rely on it.** This step is new. The plugin configuration follows Kong's AI MCP Proxy documentation, but it hasn't been run end to end against this guide's EKS and Konnect setup yet.
+> **Tested.** This step was run end to end against Kong Gateway `3.14.0.3` on the guide's EKS and Konnect setup.
 
 ---
 
@@ -196,22 +196,34 @@ It effectively turns Kong into an AI-native control and data plane for MCP ecosy
 
 ## Publish an MCP server on Kong
 
+### Run the echo backend in the cluster
+
+Deploy go-httpbin in the `kong` namespace and give it a cluster-internal service. It isn't exposed outside the cluster.
+
+```bash
+kubectl -n kong create deployment httpbin --image=mccutchen/go-httpbin --port=8080
+kubectl -n kong expose deployment httpbin --port=8080
+kubectl -n kong rollout status deployment/httpbin --timeout=120s
+```
+
+You want `successfully rolled out`. If the image pull hits a Docker Hub rate limit, use `ghcr.io/mccutchen/go-httpbin` as the image.
+
 ### Write the decK file
 
 This file defines three things:
 
-- a **service**, `mcp-echo-api`, pointing at `https://httpbin.konghq.com/anything` (the REST API behind the tools),
+- a **service**, `mcp-echo-api`, pointing at `http://httpbin.kong.svc.cluster.local:8080/anything` (the REST API behind the tools),
 - a **route**, `mcp-route`, that answers on `/mcp` (the MCP endpoint agents connect to),
 - the **`ai-mcp-proxy`** plugin in `conversion-listener` mode. Each entry under `tools` becomes one MCP tool: its description tells the agent what it does, and its `method`, `path` and `parameters` tell Kong which REST call to make.
 
-The tool paths start with `/mcp/` because they must match the route's path. `strip_path: true` removes `/mcp` before Kong calls the upstream, so `check-inventory` becomes `GET https://httpbin.konghq.com/anything/inventory?sku=...`.
+The tool paths start with `/mcp/` because they must match the route's path. `strip_path: true` removes `/mcp` before Kong calls the upstream, so `check-inventory` becomes `GET http://httpbin.kong.svc.cluster.local:8080/anything/inventory?sku=...`.
 
 ```bash
 cat > ai-mcp-proxy.yaml << 'EOF'
 _format_version: "3.0"
 services:
 - name: mcp-echo-api
-  url: https://httpbin.konghq.com/anything
+  url: http://httpbin.kong.svc.cluster.local:8080/anything
   routes:
   - name: mcp-route
     paths:
@@ -301,6 +313,8 @@ curl -s -X POST https://kong-dp.$AWS_DOMAIN/mcp \
 
 The result lists `check-inventory` and `list-orders`, each with its description and an `inputSchema` built from the `parameters` in the decK file. This is exactly what an agent sees when it asks Kong which tools exist.
 
+Look at the argument names in each `inputSchema`: Kong prefixes every parameter with where it goes in the REST call, so `sku` (a query parameter) becomes **`query_sku`** and `status` becomes **`query_status`**. Tool calls must use those names.
+
 ### 3. Call a tool
 
 ```bash
@@ -308,10 +322,20 @@ curl -s -X POST https://kong-dp.$AWS_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $MCP_SESSION_ID" \
-  --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"sku":"KONG-123"}}}'
+  --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-123"}}}'
 ```
 
-The result's `content` holds httpbin's echo of the REST call Kong made. Look for `"url": "https://httpbin.konghq.com/anything/inventory?sku=KONG-123"` and `"args": {"sku": "KONG-123"}`. That proves the agent's MCP tool call became a normal REST request, made and logged by Kong.
+The result's `content` holds httpbin's echo of the REST call Kong made, with `"isError": false`. Look for `"url": "http://httpbin.kong.svc.cluster.local:8080/anything/inventory?sku=KONG-123"` and `"args": {"sku": ["KONG-123"]}` (go-httpbin shows query values as lists). That proves the agent's MCP tool call became a normal REST request, made and logged by Kong.
+
+Try the second tool too:
+
+```bash
+curl -s -X POST https://kong-dp.$AWS_DOMAIN/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $MCP_SESSION_ID" \
+  --data '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list-orders","arguments":{"query_status":"shipped"}}}'
+```
 
 ## Point a real agent at it
 
@@ -329,10 +353,12 @@ The `tools/list` call returns `check-inventory` and `list-orders`, and the `tool
 - **`deck gateway ...` fails with an authentication error.** `PAT` isn't exported, or it has expired. Generate a new one in Konnect as described in Step 2.
 - **`/mcp` returns 404 "no Route matched".** The configuration hasn't reached the data plane yet, or the apply failed. Re-run the apply command and check its output.
 - **`tools/list` or `tools/call` returns an error about the session.** Re-run the initialize command and the `export MCP_SESSION_ID=...` command, then try again.
+- **`tools/call` returns `Additional properties are not allowed ('sku' was unexpected)`.** Use the argument names from `tools/list`: `query_sku` and `query_status`.
+- **`tools/call` returns `HTTP call failed with status 502`.** Kong couldn't reach the backend or verify its certificate. The data plane log names the cause. For example, pointing the service at the public `https://httpbin.konghq.com` fails with `upstream SSL certificate verify error: (20:unable to get local issuer certificate)` on a data plane that verifies upstream TLS, even though `curl` from a pod in the same cluster gets a `200`. That site uses a newer Let's Encrypt chain (`YE2`, `Root YE`, `ISRG Root X2`), most likely one Kong's CA store doesn't trust. Use the in-cluster backend.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-4-mcp-gateway).
 
 ## Tearing this step down
 
-Deleting the `kong-aws` control plane in [Clean up](README.md#clean-up) removes this route too. Delete `ai-mcp-proxy.yaml` and `mcp-headers.txt` from your working directory when you're done.
+Remove the echo backend with `kubectl -n kong delete service,deployment httpbin`. Deleting the `kong-aws` control plane in [Clean up](README.md#clean-up) removes this route too. Delete `ai-mcp-proxy.yaml` and `mcp-headers.txt` from your working directory when you're done.
 
 [← Step 3](3-a2a-agent-gateway-agentcore.md) · **Step 4** · [Step 5 →](5-kong-identity-oauth2.md)
