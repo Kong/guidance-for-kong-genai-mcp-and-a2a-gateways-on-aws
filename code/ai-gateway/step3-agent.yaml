@@ -1,0 +1,21 @@
+# Step 3: publish the AgentCore agent on the AI Gateway.
+# Needs AGENTCORE_URL exported (the runtime's invocation URL).
+ai_gateway_agents:
+  - ref: agentcore-hello
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: agentcore-hello
+    display_name: AgentCore Hello World Agent
+    type: a2a
+    enabled: true
+    config:
+      url: !env AGENTCORE_URL
+      route:
+        paths:
+          - /a2a
+        strip_path: true
+      upstream:
+        auth:
+          type: aws        # SigV4, with the data plane's Pod Identity credentials
+          region: us-west-2
+      logging:
+        payloads: true

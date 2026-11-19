@@ -1,0 +1,59 @@
+# Step 6: the LLM Gateway to Amazon Bedrock, behind the same Kong Identity token.
+# Re-declares the Step 5 auth strategy so the model can reference it. Needs the same
+# Kong Identity variables as Step 5 (ISSUER_URL, INTROSPECTION_URL, CLIENT_ID,
+# CLIENT_SECRET, CACHE_TOKENS_SALT).
+ai_gateway_auth_strategies:
+  - ref: kong-identity-oidc
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: kong-identity-oidc
+    display_name: Kong Identity (OAuth2 introspection)
+    type: openid-connect
+    config:
+      issuer: !env ISSUER_URL
+      client_id:
+        - !env CLIENT_ID
+      client_secret:
+        - !secret {source: !env CLIENT_SECRET}
+      auth_methods:
+        - introspection
+      introspection_endpoint: !env INTROSPECTION_URL
+      ssl_verify: true
+      cache_tokens_salt: !env CACHE_TOKENS_SALT
+
+ai_gateway_model_providers:
+  - ref: aws-bedrock
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: aws-bedrock
+    display_name: Amazon Bedrock (Pod Identity)
+    type: bedrock
+    config:
+      auth:
+        type: aws
+
+ai_gateway_models:
+  - ref: nova-micro
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: nova-micro
+    display_name: Amazon Nova Micro
+    type: model
+    access:
+      auth_strategies:
+        - !ref kong-identity-oidc   # without this, anyone could run Bedrock calls on your bill
+    formats:
+      - type: openai
+    capabilities:
+      - generate
+    config:
+      route:
+        paths:
+          - /v1
+        model:
+          body_param: model
+          values:
+            - nova-micro
+    targets:
+      - name: us.amazon.nova-micro-v1:0
+        provider: aws-bedrock
+        config:
+          type: bedrock
+          region: us-west-2

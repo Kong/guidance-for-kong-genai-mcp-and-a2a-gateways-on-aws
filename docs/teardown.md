@@ -2,7 +2,7 @@
 
 Back to the [README](../README.md).
 
-This page removes everything the guide creates, in an order that avoids leftovers: Kong and Konnect objects first (which also deletes the load balancers), then AgentCore, DNS and the certificate, the Helm releases, the EKS cluster, and finally IAM. The EKS cluster and the two AgentCore runtimes are the main ongoing costs, so if you only have a few minutes, do sections 1 to 6.
+This page removes everything the guide creates, in an order that avoids leftovers: the AI Gateway first (which also deletes its load balancer), then AgentCore, DNS and the certificate, the Helm releases, the EKS cluster, and finally IAM. The EKS cluster and the AgentCore runtime are the main ongoing costs, so if you only have a few minutes, do sections 1 to 5.
 
 > **Not yet run end to end.** These commands follow the resources the guide creates, but this teardown hasn't been tested as a whole. Read each block before running it, and check the output before moving on. Commands that look things up print `not found` instead of failing when something is already gone.
 
@@ -59,32 +59,21 @@ del_policy() {
 }
 ```
 
-## 1. Konnect AI Gateway (Step 6, skip if you didn't run it)
+## 1. AI Gateway, data plane and echo backend (Steps 2 and 4)
 
-Delete the data plane first (this also deletes its NLB), then the AI Gateway. The Kong Operator removes the gateway from Konnect, which should remove its agents, MCP servers, models, providers and auth strategies with it.
+Delete the data plane first (this also deletes its NLB), then the AI Gateway. The Kong Operator removes the gateway from Konnect when its resource is deleted, which should remove its agents, MCP servers, models, providers and auth strategies with it. Do this while the operator is still running.
 
 ```bash
+kubectl -n kong delete service,deployment httpbin --ignore-not-found
 kubectl delete aigatewaydataplane kong-aws-ai-dp -n kong --wait=true
 kubectl delete konnectaigateway kong-aws-ai -n kong --wait=true
+kubectl delete konnectapiauthconfiguration konnect-api-auth-conf -n kong
 del_record "ai-dp.$AWS_DOMAIN." A
 ```
 
 Check in Konnect that **AI Gateway → Gateways** no longer lists **Kong AWS AI Gateway**. If it does, delete it there.
 
-## 2. Kong data plane, control plane and echo backend (Steps 2 and 4)
-
-The Kong Operator deletes the `kong-aws` control plane in Konnect when its resource is deleted, so delete these while the operator is still running. Deleting the data plane also deletes its NLB.
-
-```bash
-kubectl -n kong delete service,deployment httpbin --ignore-not-found
-kubectl delete dataplane kong-aws-dp -n kong --wait=true
-kubectl delete konnectextensions.konnect.konghq.com konnect-config-aws -n kong
-kubectl delete konnectgatewaycontrolplane kong-aws -n kong --wait=true
-kubectl delete konnectapiauthconfiguration konnect-api-auth-conf -n kong
-del_record "kong-dp.$AWS_DOMAIN." A
-```
-
-Then confirm that the load balancers are gone. This can take a minute or two after the services are deleted:
+Then confirm that the load balancer is gone. This can take a minute or two after the service is deleted:
 
 ```bash
 kubectl get svc -A | grep LoadBalancer
@@ -93,7 +82,7 @@ aws elbv2 describe-load-balancers --region $AWS_REGION --query "LoadBalancers[?s
 
 Both commands should print nothing. If an NLB is left over after a few minutes, delete it in the EC2 console (**Load Balancers**), otherwise it keeps billing after the cluster is gone.
 
-## 3. Kong Operator
+## 2. Kong Operator
 
 ```bash
 helm uninstall kong-operator -n kong-system
@@ -102,7 +91,7 @@ kubectl delete namespace kong kong-system --ignore-not-found
 
 If `kubectl delete namespace kong` hangs, a Kong resource still has a finalizer the operator didn't clear. Press Ctrl+C, list what's left with `kubectl api-resources --verbs=list --namespaced -o name | xargs -n1 kubectl get -n kong --ignore-not-found --show-kind`, and delete it in Konnect by hand.
 
-## 4. Kong Identity (Steps 3 and 5)
+## 3. Kong Identity (Step 5)
 
 ```bash
 AUTHZ_SERVER_ID=$(curl -s "https://us.api.konghq.com/v1/auth-servers" -H "Authorization: Bearer $PAT" \
@@ -114,9 +103,9 @@ curl -s -o /dev/null -w "delete: %{http_code}\n" -X DELETE "https://us.api.kongh
 
 You want a `204`. Its scope, claim and client should go with it, and tokens it issued stop validating. Check under **Identity** in Konnect.
 
-## 5. AgentCore runtimes (Step 3)
+## 4. AgentCore runtime (Step 3)
 
-Run this in the AgentCore project folder (`agentcorekong`). Removing everything from the project and deploying again deletes the runtimes and the project's CloudFormation stack:
+Run this in the AgentCore project folder (`agentcorekong`). Removing everything from the project and deploying again deletes the runtime and the project's CloudFormation stack:
 
 ```bash
 agentcore remove all -y
@@ -131,9 +120,9 @@ Both commands should print nothing. If a stack is still listed, delete it with `
 
 The CDK bootstrap stack (`CDKToolkit`) was created on the first deploy if your account didn't have one. Leave it unless you know nothing else in the account uses CDK. Deleting it also requires emptying its S3 bucket first.
 
-## 6. EKS cluster and Load Balancer Controller (Step 1)
+## 5. EKS cluster and Load Balancer Controller (Step 1)
 
-Uninstall the controller only after section 2 confirmed the NLBs are gone, otherwise nothing is left to clean them up. Then delete the cluster, which takes about 10 to 15 minutes:
+Uninstall the controller only after section 1 confirmed the NLB is gone, otherwise nothing is left to clean them up. Then delete the cluster, which takes about 10 to 15 minutes:
 
 ```bash
 helm uninstall aws-load-balancer-controller -n kube-system
@@ -142,7 +131,7 @@ eksctl delete cluster --name $CLUSTER --region $AWS_REGION --wait
 
 `eksctl` also deletes the node group, the Pod Identity add-on and associations, and the CloudFormation stacks it created, usually including the IAM roles it made for the Pod Identity associations.
 
-## 7. Certificate and validation record (Step 1)
+## 6. Certificate and validation record (Step 1)
 
 ```bash
 VALIDATION_NAME=$(aws acm describe-certificate --certificate-arn $CERTIFICATE_ARN --region $AWS_REGION \
@@ -151,9 +140,9 @@ aws acm delete-certificate --certificate-arn $CERTIFICATE_ARN --region $AWS_REGI
 del_record "$VALIDATION_NAME" CNAME
 ```
 
-If `delete-certificate` says the certificate is in use, a load balancer still references it. Go back to section 2.
+If `delete-certificate` says the certificate is in use, a load balancer still references it. Go back to section 1.
 
-## 8. IAM roles and policies (Steps 1 and 2)
+## 7. IAM roles and policies (Steps 1 and 2)
 
 Roles first, then policies. A policy that's still attached to something won't delete, which protects anything else using it.
 
@@ -166,7 +155,7 @@ del_policy $KONG_POLICY
 
 > **Shared account?** Only delete names you created. If `AWSLoadBalancerControllerIAMPolicy` already existed before you started and you used a suffixed name instead, set `LBC_POLICY` to your suffixed name.
 
-## 9. Domain and hosted zone (optional)
+## 8. Domain and hosted zone (optional)
 
 Skip this if you used a domain you're keeping. A hosted zone costs a small monthly fee while it exists, and a domain registered in Step 1 renews automatically. To stop both:
 
@@ -179,10 +168,10 @@ aws route53domains disable-domain-auto-renew --domain-name $AWS_DOMAIN --region 
 
 The first command must print nothing. A hosted zone can't be deleted while it still has records other than `NS` and `SOA`, so delete any it lists with `del_record`. Without the zone, the domain stops resolving.
 
-## 10. Credentials and local files
+## 9. Credentials and local files
 
 - **Konnect personal access token:** revoke it in Konnect (your initials → **Personal Access Tokens**). It was also stored in the cluster, which is gone, and possibly in a kongctl profile (`~/.config/kongctl/config.yaml`).
-- **Working folders:** the AgentCore project, the decK and kongctl files, and `mcp-headers.txt` from the steps. None of them hold secrets, but you can delete them.
+- **Working folders:** the AgentCore project and `mcp-headers.txt` from the steps. None of them hold secrets, but you can delete them.
 
 ## Check that nothing is still running
 

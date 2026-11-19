@@ -6,8 +6,8 @@ Back to the [README](../README.md).
 
 ## Before you start: two things that catch everyone
 
-- **Run everything in one shell session.** Later steps rely on variables exported earlier (`AWS_DOMAIN`, `CERTIFICATE_ARN`, `HOSTED_ZONE_ID`, `PAT`, `ISSUER_URL`, `CLIENT_ID`, `CLIENT_SECRET`, `JWT_URL`). If you open a new terminal, re-run the `export` commands. The client secret can't be shown again, so if you lose it, create a new Kong Identity client and update the AgentCore runtime's `allowedClients`.
-- **Step 3 resets Kong's configuration; Steps 4 and 5 add to it.** Step 3 runs `deck gateway reset ... -f` before `deck gateway sync`, which deletes everything on the `kong-aws` control plane. Steps 4 and 5 use `deck gateway apply`, which only creates or updates. If you re-run Step 3, re-run the `apply` commands in Steps 4 and 5 afterwards.
+- **Run everything in one shell session.** Later steps rely on variables exported earlier (`AWS_DOMAIN`, `CERTIFICATE_ARN`, `HOSTED_ZONE_ID`, `PAT`, `AGENTCORE_URL`, `ISSUER_URL`, `CLIENT_ID`, `CLIENT_SECRET`, `INTROSPECTION_URL`, `CACHE_TOKENS_SALT`). If you open a new terminal, re-run the `export` commands. The client secret can't be shown again, so if you lose it, create a new Kong Identity client and re-run Step 5's `kongctl apply`.
+- **kongctl `apply` only creates and updates.** Each step's file adds to the gateway without removing what earlier steps declared, so you can re-run any step's `apply` safely.
 
 ## Step 1: EKS and networking
 
@@ -37,50 +37,68 @@ Registration takes time. Re-run the `get-operation-detail` command until it repo
 - Check that `HOSTED_ZONE_ID`, `RESOURCE_RECORD_NAME` and `RESOURCE_RECORD_VALUE` are all non-empty before running `change-resource-record-sets`.
 - Once DNS is right, validation usually completes within a few minutes.
 
-## Step 2: Kong Konnect data plane
+## Step 2: Kong AI Gateway on EKS
 
-### The operator or data plane doesn't come up
+### `kubectl wait aigatewaydataplane ...` times out, with no pod and no status
 
-Follow the logs with the two `kubectl logs -f ...` commands in [Step 2](../2-kong-konnect-data-plane.md). Common causes:
+The operator's AI Gateway data plane controller is off by default. Check the operator's environment:
+
+```
+kubectl -n kong-system get deploy kong-operator-kong-operator-controller-manager \
+  -o jsonpath='{range .spec.template.spec.containers[0].env[*]}{.name}={.value}{"\n"}{end}' | grep -i controller
+```
+
+It must include `KONG_OPERATOR_ENABLE_CONTROLLER_AIGATEWAYDATAPLANE=true`. If it doesn't, re-run Step 2's `helm upgrade` with `--set env.enable_controller_aigatewaydataplane=true`. The data plane resource you already applied is picked up automatically.
+
+### The operator logs `containers[1].image: Required value`
+
+The data plane's pod template names its container something other than `aigw`, so the operator treats it as a second container with no image. Use `name: aigw`, as in `code/ai-gateway/ai-gateway-dataplane.yaml`. Search the operator's log for the cause of any other data plane failure:
+
+```
+kubectl logs -n kong-system deploy/kong-operator-kong-operator-controller-manager | grep -i aigatewaydataplane | tail
+```
+
+### The AI Gateway or the data plane doesn't come up in Konnect
+
+Check the operator's log (above). Common causes:
 - `PAT` is wrong, expired or not exported when the `KonnectAPIAuthConfiguration` was applied.
 - Your Konnect organization isn't in the US region. The guide hard-codes `serverURL: us.api.konghq.com`.
+- Your organization doesn't have AI Gateway available.
 
-### DATA_PLANE_LB is empty
+### `AI_LB` is empty
 
-The NLB is still being provisioned. Wait a few minutes after applying the `DataPlane` resource, then re-run the `export DATA_PLANE_LB=...` command.
+The NLB is still being provisioned. Wait a few minutes after the data plane is created, then re-run the `export AI_LB=...` command.
 
 ### HTTP works but HTTPS doesn't
 
-The `DataPlane` manifest reads `$CERTIFICATE_ARN` when you apply it. If the variable was empty, the NLB has no certificate on 443. Check the listeners with the `describe-listeners` command in Step 2.
+The data plane manifest reads `CERTIFICATE_ARN` when you apply it. If the variable was empty, the NLB has no certificate on 443. Check with `kubectl get svc kong-aws-ai-dp-ingress -n kong -o yaml | grep ssl-cert`, then re-apply with the variable set.
 
-### curl returns 404 "no Route matched with those values"
+### curl returns 404
 
-That's the expected result at the end of Step 2. Kong is up but has no routes yet.
+That's the expected result at the end of Step 2. Kong is up, but nothing is declared on the gateway yet.
 
 ### curl says "Could not resolve host"
 
-Your machine's resolver hasn't picked up the new `kong-dp` record yet, even if public DNS has (`dig +short kong-dp.$AWS_DOMAIN @8.8.8.8`). Pin the address until it catches up:
+Your machine's resolver hasn't picked up the new `ai-dp` record yet, even if public DNS has (`dig +short ai-dp.$AWS_DOMAIN @8.8.8.8`). Pin the address until it catches up:
 
 ```
-export KONG_IP=$(dig +short kong-dp.$AWS_DOMAIN @8.8.8.8 | head -1)
-curl --resolve kong-dp.$AWS_DOMAIN:443:$KONG_IP https://kong-dp.$AWS_DOMAIN
+export KONG_IP=$(dig +short ai-dp.$AWS_DOMAIN @8.8.8.8 | head -1)
+curl --resolve ai-dp.$AWS_DOMAIN:443:$KONG_IP https://ai-dp.$AWS_DOMAIN/
 ```
 
-`scripts/verify.sh` does this for you.
+`scripts/verify.sh` and `scripts/traffic.sh` do this for you.
 
 ### curl says "Empty reply from server"
 
-TLS worked, but the NLB had no healthy target behind the address you reached. Right after the `DataPlane` is created, health checks are still warming up. Later, with one Kong pod and cross-zone load balancing off, NLB addresses in zones without a pod can keep dropping connections. Wait until the target group reports `healthy`, then re-resolve the name and retry, or run more data plane replicas.
+TLS worked, but the NLB had no healthy target behind the address you reached. Right after the data plane is created, health checks are still warming up. Later, with one pod and cross-zone load balancing off, NLB addresses in zones without a pod can keep dropping connections. Wait until the target group reports `healthy`, then re-resolve the name and retry, or run more data plane replicas.
 
-### Kong silently ignores new configuration
+### The load balancer has an extra port 8443
 
-If decK and Konnect both report success but the data plane keeps behaving as before (a new route returns 404, a new plugin has no effect), the data plane probably **rejected** the new configuration and kept the old one. It logs why:
+The operator adds Kong's own TLS proxy port to the service. It serves the same routes with Kong's self-signed certificate. It isn't the admin API. Clients use 443.
 
-```
-kubectl logs -n kong $(kubectl get pod -n kong -o name | grep dataplane-kong-aws) --since=10m | grep -i -E "error|invalid"
-```
+### kongctl reaches the wrong Konnect organization, or refuses `--pat`
 
-One plugin entity that fails validation on the data plane blocks the whole configuration, including unrelated routes. A common case is `ssl_verify invalid value: global tls_certificate_verify option is enabled, ssl_verify cannot be disabled` (see [Step 5](#step-5-kong-identity)).
+Some company setups wrap kongctl (and decK) to pin each folder to a profile, and refuse token flags. Leave out `--pat "$PAT"`, and run kongctl from a folder pinned to the profile for the organization that holds `kong-aws-ai`. `kongctl get ai-gateways` is a safe check.
 
 ## Step 3: A2A and AgentCore
 
@@ -98,49 +116,34 @@ The CLI template's `pyproject.toml` pins `a2a-sdk ~= 0.3`. Replace it with the o
 
 ### `agentcore deploy` fails, or the agent doesn't start
 
-Check that `pyproject.toml` lists `uvicorn` and `a2a-sdk[all]`, and that `agentcore.json` has `"protocol": "A2A"` and `"entrypoint": "server_1.py"` for each runtime, as in [Step 3](../3-a2a-agent-gateway-agentcore.md#agent-configuration). Then tail the runtime logs in CloudWatch with the `aws logs tail` command in Step 3. If the CLI can't find credentials from an `aws login` session, run `eval "$(aws configure export-credentials --format env)"` first.
-
-### `agentcore add runtime` says customJwtAuthorizer is required
-
-The CLI expects the key `customJwtAuthorizer` (the AWS API spells it `customJWTAuthorizer`). Rebuild `AUTH_CFG` with the CLI's spelling.
-
-### AgentCore says "Ineffectual token, will expire within the next minute"
-
-AgentCore rejects tokens that expire within about a minute, so a 60-second token always fails. Give the Kong Identity client a longer `access_token_duration` (Step 3 uses 900 seconds), for example with a `PATCH` to `/v1/auth-servers/$AUTHZ_SERVER_ID/clients/$CLIENT_ID`, then fetch a new token.
+Check that `pyproject.toml` lists `uvicorn` and `a2a-sdk[all]`, and that `agentcore.json` has `"protocol": "A2A"` and `"entrypoint": "server_1.py"`, as in [Step 3](../3-a2a-agent-gateway-agentcore.md#agent-configuration). Then tail the runtime logs in CloudWatch with the `aws logs tail` command in Step 3. If the CLI can't find credentials from an `aws login` session, run `eval "$(aws configure export-credentials --format env)"` first.
 
 ### awscurl returns an authorization error
 
-The `agent` runtime uses SigV4. Make sure `awscurl` has credentials (`aws configure`, or export them from an `aws login` session) with permission to invoke the runtime. `awscurl` doesn't work against the `agentjwt` runtime, which only accepts bearer tokens.
+The runtime uses SigV4. Make sure `awscurl` has credentials (`aws configure`, or export them from an `aws login` session) with permission to invoke the runtime.
 
-### `deck gateway sync` fails with "validation error: unknown field"
+### The gateway call returns `403` or `Missing Authentication Token` from AWS
 
-The `ai-a2a-proxy` config contains an `auth:` block. In Kong 3.14 this plugin has only `max_request_body_size` and `logging` settings. Remove the block. To see a plugin's fields for your version, fetch its schema from Konnect: `https://us.api.konghq.com/v2/control-planes/<control plane ID>/core-entities/schemas/plugins/ai-a2a-proxy`.
+The call reached AgentCore unsigned, or signed by a role that may not invoke it. Check that:
+- the data plane runs as `kaigateway-podid-sa`: `kubectl get deploy kong-aws-ai-dp -n kong -o jsonpath='{.spec.template.spec.serviceAccountName}'`;
+- the Pod Identity association for that service account exists, and its role allows `bedrock-agentcore:InvokeAgentRuntime`;
+- the agent's `upstream.auth.type` is `aws` with `region: us-west-2`.
 
-### Kong returns "Missing Authentication Token" from AgentCore
+The data plane log shows `Creating aws_iam auth handler` when it signs.
 
-The call reached AgentCore without a usable token: the `Authorization: Bearer` header is missing, or the token was issued to a client other than the one in the runtime's `allowedClients`. Also check that `DECK_AGENTCORE_PATH` was built from `JWT_URL` (the `agentjwt` runtime), not from the SigV4 runtime's URL.
+### `AGENTCORE_URL` is empty
 
-### `DECK_AGENTCORE_PATH` is empty
+Re-run the `export AGENTCORE_ARN=...` and `export AGENTCORE_URL=...` commands from the AgentCore project folder, in the same shell you run kongctl from.
 
-`deck gateway sync` reads it with `${{ env "DECK_AGENTCORE_PATH" }}`. Re-run the `export JWT_ARN=...`, `export JWT_URL=...` and `export DECK_AGENTCORE_PATH=...` commands in the same shell.
-
-### decK says the token flag isn't allowed
-
-Some company setups wrap `deck` and refuse `--konnect-token`, taking the token from a pinned profile. Drop the flag and make sure the profile points at the Konnect organization that holds `kong-aws`. `deck gateway ping --konnect-control-plane-name kong-aws` is a safe check.
-
-## Step 4: MCP Gateway
-
-### `deck gateway apply` is not a known command
-
-Your decK version is older than the `apply` command. Upgrade decK, then check that `deck gateway apply --help` prints its usage.
+## Step 4: MCP tools
 
 ### `/mcp` returns 404 "no Route matched with those values"
 
-The configuration hasn't reached the data plane yet, or the apply failed. Re-run the `deck gateway apply` command and read its output, then check that `mcp-route` appears under the `kong-aws` gateway in Konnect.
+The MCP server hasn't reached the data plane yet, or `kongctl apply` failed. Check the apply output, then check that **Inventory and Orders Tools** appears under **AI Gateway → MCP Servers** in Konnect.
 
 ### The MCP calls are rejected after initialize
 
-MCP servers can issue a session ID in the `Mcp-Session-Id` response header, and expect later requests to send it back. Re-run the initialize command and the `export MCP_SESSION_ID=...` command, check that `echo $MCP_SESSION_ID` prints a value, then retry `tools/list`.
+MCP servers issue a session ID in the `Mcp-Session-Id` response header, and expect later requests to send it back. Re-run the initialize command and the `export MCP_SESSION_ID=...` command, check that `echo $MCP_SESSION_ID` prints a value, then retry `tools/list`.
 
 ### The response starts with `event:` and `data:` instead of plain JSON
 
@@ -152,30 +155,48 @@ Kong prefixes each tool argument with where it goes in the REST call. Use `query
 
 ### `tools/call` returns "HTTP call failed with status 502"
 
-Kong couldn't complete the REST call. The data plane log has the reason next to the request ID. `upstream SSL certificate verify error: (20:unable to get local issuer certificate)` means Kong can't verify the backend's certificate. This happens with the public `https://httpbin.konghq.com`, which is why Step 4 runs an echo backend in the cluster. Check that the `httpbin` deployment in the `kong` namespace is running, and that the service URL is `http://httpbin.kong.svc.cluster.local:8080/anything`.
+Kong couldn't complete the REST call. The data plane log has the reason next to the request ID (`kubectl logs -n kong deploy/kong-aws-ai-dp --since=5m`). `upstream SSL certificate verify error: (20:unable to get local issuer certificate)` means Kong can't verify the backend's certificate. This happens with the public `https://httpbin.konghq.com`, which is why Step 4 runs an echo backend in the cluster. Check that the `httpbin` deployment in the `kong` namespace is running, and that the MCP server's `config.url` is `http://httpbin.kong.svc.cluster.local:8080/anything`.
 
 ## Step 5: Kong Identity
 
-### decK requires `cache_tokens_salt`
+### kongctl says `config.cache_tokens_salt is required`
 
-decK refuses to sync the `openid-connect` plugin without an explicit `cache_tokens_salt`, so later syncs don't regenerate it. Export `DECK_CACHE_TOKENS_SALT=$(openssl rand -hex 16)` and re-run the apply. Keep the same value for later applies.
+kongctl requires an explicit `cache_tokens_salt` for the OpenID Connect auth strategy, so later applies don't regenerate it. Export `CACHE_TOKENS_SALT=$(openssl rand -hex 16)` and re-run. Keep the same value for later applies.
 
-### The plugin was applied but `/a2a` behaves as before
+### kongctl says `could not unmarshal ... into any supported union types for AIGatewayMCPServerListenerAccess`
 
-If a call without a token gets a `401` **with** an `X-Kong-Upstream-Latency` header, the rejection came from AgentCore and the plugin isn't active. Check the data plane log (see [Kong silently ignores new configuration](#kong-silently-ignores-new-configuration)). `ssl_verify cannot be disabled` means the plugin needs `ssl_verify: true`, as in Step 5's decK file.
+The MCP server's `access` block has the agent's shape. An MCP server needs `acl_attribute_type: consumer`, and it references the strategy by name (`!ref kong-identity-oidc#name`), as in `code/ai-gateway/step5-auth.yaml`.
+
+### `/a2a` or `/mcp` still answers without a token
+
+The apply didn't happen. kongctl validates the whole file first, and if any entity is invalid it applies nothing. Re-run `kongctl diff` and fix the error it reports.
 
 ### Introspection says "active": false
 
-The token has expired. The client from Step 3 issues tokens that last 15 minutes. Get a new token and introspect it straight away.
+The token has expired. Step 5's client issues tokens that last 15 minutes. Get a new token and introspect it straight away.
 
-### `/a2a` still returns 401 with a token
+### A call returns 401 even with a token
 
-Get a fresh token and call straight away. If it still fails, introspect that same token by hand as shown in Step 5. If Kong Identity reports `"active": true` but Kong still rejects it, check that `DECK_ISSUER`, `DECK_CLIENT_ID`, `DECK_CLIENT_SECRET` and `DECK_KONG_IDENTITY_INTROSPECTION_URL` were set when you ran `deck gateway apply`, then re-run it.
+Get a fresh token and call straight away. If it still fails, introspect that same token by hand as shown in Step 5. If Kong Identity reports `"active": true` but Kong still rejects it, check that `ISSUER_URL`, `INTROSPECTION_URL`, `CLIENT_ID` and `CLIENT_SECRET` were set when you ran `kongctl apply`, then re-run it.
 
-### `deck gateway apply` says `a2a-route` doesn't exist
+### The wrong auth server is used
 
-The plugin attaches to the route created in Step 3. Re-run Step 3's `deck gateway sync`, then the `apply` commands in Steps 4 and 5.
+The Step 5 commands take each ID from its create response. If you created several authorization servers, list them with `curl -s https://us.api.konghq.com/v1/auth-servers -H "Authorization: Bearer $PAT" | jq '.data[] | {id, name, issuer}'` and export the right `ISSUER_URL`.
 
-### `/a2a` returns 401 without a token
+## Step 6: LLM Gateway to Bedrock
 
-That's the expected result once Step 5 is applied. Every call now needs a valid Kong Identity token.
+### The model call returns `AccessDenied` from Bedrock
+
+Either your account doesn't have access to Nova Micro in `us-west-2` (run Step 6's `converse` check with your own credentials), or the data plane's role doesn't allow `bedrock:InvokeModel` (run Step 6's `simulate-principal-policy` check).
+
+### The model call returns an error about the model
+
+The request body's `"model"` must be `nova-micro`, the name declared on the gateway, not the Bedrock model ID (`us.amazon.nova-micro-v1:0`).
+
+### kongctl complains about the auth strategy in `step6-bedrock.yaml`
+
+Step 6's file re-declares the Step 5 auth strategy, so the model can reference it. Export the same Step 5 variables first, including the same `CACHE_TOKENS_SALT`.
+
+### The AI Gateway's Overview tiles stay at 0
+
+Analytics take a few minutes to appear, and the Overview's Usage tiles count model calls only. Send some traffic to `/v1` (for example with `scripts/traffic.sh`), wait a few minutes and refresh.

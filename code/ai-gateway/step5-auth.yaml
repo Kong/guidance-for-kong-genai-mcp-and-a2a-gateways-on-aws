@@ -1,7 +1,7 @@
-# kongctl configuration for the AI Gateway: an auth strategy, an A2A agent, an MCP server
-# and a Bedrock model.
-# Needs these exported: ISSUER_URL, INTROSPECTION_URL, CLIENT_ID, CLIENT_SECRET,
-# CACHE_TOKENS_SALT (Kong Identity, from Step 3) and AGENTCORE_URL (the SigV4 "agent" runtime).
+# Step 5: require a Kong Identity token on the agent and the MCP server.
+# Declares the auth strategy and re-declares the Step 3 agent and Step 4 MCP server
+# with an access block. Needs these exported: ISSUER_URL, INTROSPECTION_URL, CLIENT_ID,
+# CLIENT_SECRET, CACHE_TOKENS_SALT and AGENTCORE_URL.
 ai_gateway_auth_strategies:
   - ref: kong-identity-oidc
     ai_gateway: !lookup {name: kong-aws-ai}
@@ -84,43 +84,3 @@ ai_gateway_mcp_servers:
             description: Only return orders with this status, for example shipped.
             schema:
               type: string
-
-# LLM gateway to Amazon Bedrock. No keys: the data plane signs with its Pod Identity role,
-# which Step 2's policy allows to call bedrock:InvokeModel.
-ai_gateway_model_providers:
-  - ref: aws-bedrock
-    ai_gateway: !lookup {name: kong-aws-ai}
-    name: aws-bedrock
-    display_name: Amazon Bedrock (Pod Identity)
-    type: bedrock
-    config:
-      auth:
-        type: aws
-
-ai_gateway_models:
-  - ref: nova-micro
-    ai_gateway: !lookup {name: kong-aws-ai}
-    name: nova-micro
-    display_name: Amazon Nova Micro
-    type: model
-    access:
-      auth_strategies:
-        - !ref kong-identity-oidc   # without this, anyone could run Bedrock calls on your bill
-    formats:
-      - type: openai
-    capabilities:
-      - generate
-    config:
-      route:
-        paths:
-          - /v1
-        model:
-          body_param: model
-          values:
-            - nova-micro
-    targets:
-      - name: us.amazon.nova-micro-v1:0
-        provider: aws-bedrock
-        config:
-          type: bedrock
-          region: us-west-2

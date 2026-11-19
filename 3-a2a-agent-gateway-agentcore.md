@@ -1,46 +1,34 @@
-# Step 3: Put an AgentCore agent behind Kong's Agent (A2A) Gateway
+# Step 3: Put an AgentCore agent behind the AI Gateway
 
 [← Step 2](2-kong-konnect-data-plane.md) · **Step 3** · [Step 4 →](4-mcp-gateway.md)
 
 ## Why this step
 
-Amazon Bedrock AgentCore is a strong place to *run* agents. It gives you a managed runtime, scaling and built-in inbound authentication. What it doesn't give you on its own is one shared front door that **other agents** (inside AWS, in another cloud or on a laptop) can reach using a plain A2A call, with one set of policies, logs and metrics across all of them.
+Amazon Bedrock AgentCore is a strong place to *run* agents. It gives you a managed runtime, scaling and IAM-signed (SigV4) invocation. What it doesn't give you on its own is one shared front door that **other agents** (inside AWS, in another cloud or on a laptop) can reach using a plain A2A call, with one set of policies, logs and metrics across all of them.
 
-This step builds that front door. You deploy a small A2A agent to AgentCore, then publish it through Kong at `https://kong-dp.<your domain>/a2a`. Callers don't need AWS credentials. They need an OAuth2 token from **Kong Identity**.
-
-### How Kong reaches AgentCore
-
-An AgentCore runtime accepts **either** IAM (SigV4) signatures **or** JWT bearer tokens for inbound calls, not both ([AWS docs](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-oauth.html)). Kong's **AI A2A Proxy** plugin, in Kong Gateway 3.14, can't sign requests with AWS IAM: its configuration has only `max_request_body_size` and `logging` settings. So this step gives the runtime **JWT inbound auth** that trusts tokens issued by Kong Identity:
-
-1. A caller gets a short-lived token from Kong Identity (client credentials grant).
-2. It calls `https://kong-dp.<your domain>/a2a` with that token. Kong forwards the call, token included, to AgentCore.
-3. AgentCore checks the token's issuer, signature and `client_id` before the agent runs.
-
-[Step 5](5-kong-identity-oauth2.md) then makes Kong check the token as well, so invalid calls are stopped at the gateway and never reach AWS.
+This step builds that front door. You deploy a small A2A agent to AgentCore, then publish it on the AI Gateway as an **Agent** at `https://ai-dp.<your domain>/a2a`. AgentCore keeps its default IAM authentication: the AI Gateway **signs every call with SigV4**, using the data plane's Pod Identity role from Step 2 (`bedrock-agentcore:InvokeAgentRuntime`). Callers don't need AWS credentials, and AgentCore stays private to IAM.
 
 ## What it does, in plain English
 
-1. **Explains** the A2A flow and Kong's plugins (diagram and background).
+1. **Explains** the A2A flow (diagram and background).
 2. **Runs a "hello world" A2A agent on your laptop** (`server_1.py`) and calls it directly, so you can see what A2A requests and responses look like.
-3. **Deploys the same agent to AgentCore** with the AgentCore CLI and calls it with SigV4-signed `awscurl`. This runtime (`agent`) uses AgentCore's default IAM auth, and proves the agent runs on AgentCore.
-4. **Creates the token issuer:** an authorization server, scope, claim and client in Kong Identity.
-5. **Adds a second runtime (`agentjwt`)** with the same code and JWT inbound auth that trusts Kong Identity, and calls it with a bearer token.
-6. **Publishes `agentjwt` through Kong.** A decK file creates a Kong service pointing at that runtime, with the `ai-a2a-proxy` plugin. You then call it with plain `curl` and a token.
-7. **Shows a second agent** (`client_1.py`) that discovers and talks to the first one through Kong.
+3. **Deploys the same agent to AgentCore** with the AgentCore CLI and calls it with SigV4-signed `awscurl`.
+4. **Publishes it on the AI Gateway** with kongctl: an Agent at `/a2a` whose upstream auth is AWS SigV4. You then call it with plain `curl`.
+
+Until Step 5 adds a token check, `/a2a` accepts calls from anyone who knows the URL.
 
 ## Before you start
 
 - Steps 1 and 2 are complete, and `PAT` and `AWS_DOMAIN` are still exported.
 - Python with the A2A SDK, set up as described in [code/a2a/python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md) (uses `uv`).
-- Node.js/npm for the AgentCore CLI, plus [`awscurl`](https://pypi.org/project/awscurl/), decK and `jwt-cli`.
+- Node.js/npm for the AgentCore CLI, plus [`awscurl`](https://pypi.org/project/awscurl/) and kongctl.
 - AgentCore available in `us-west-2` for your account.
 
 > **Things to know before you copy commands from this step**
 >
-> - **Tested versions.** This step was last run end to end with Kong Gateway `3.14.0.3`, AgentCore CLI `1.1.0`, `a2a-sdk` `1.3.1` and decK `1.70`. The AgentCore CLI changes quickly, so if a command or file layout differs, check `agentcore <command> --help`.
+> - **Tested versions.** This step was last run end to end with AgentCore CLI `1.1.0`, `a2a-sdk` `1.3.1`, kongctl `1.28.4` and the `kong/kong-ai-gateway:2.3.1` data plane. The AgentCore CLI changes quickly, so if a command or file layout differs, check `agentcore <command> --help`.
 > - **Two versions of the agent.** The agent code shown inline below is a simpler version of [`code/a2a/server_1.py`](code/a2a/server_1.py). The file adds middleware that logs request headers and infers the `A2A-Version` header from the request body. The AgentCore deployment copies `server_1.py`, so the file is what actually runs there.
-> - **This step starts from a clean slate.** `deck gateway reset ... -f` deletes all existing configuration on the `kong-aws` control plane before `sync` applies `ai-a2a-proxy.yaml`. Steps 4 and 5 then add to it with `deck gateway apply`, which doesn't delete anything. If you re-run this step later, re-run the `apply` commands in Steps 4 and 5 afterwards.
-> - **Keep one terminal.** The AgentCore, Kong Identity and Kong sections all reuse variables exported earlier in this step (`AGENTCORE_URL`, `ISSUER_URL`, `CLIENT_ID`, `CLIENT_SECRET`, `JWT_URL`), and Step 5 needs them too.
+> - **Keep one terminal.** Later steps reuse `AGENTCORE_URL` from this step.
 
 ---
 
@@ -77,67 +65,24 @@ This demonstrates:
 
 Also, it creates a secure hub-and-spoke architecture for distributed Agentic Application Systems.
 
-## Kong Agent Gateway
 
-At the center-bottom is the Kong Agent Gateway, which acts as the runtime enforcement and routing layer for all A2A traffic.
+## Kong AI Gateway
 
-The gateway contains several important plugins:
+In this design the gateway is the **AI Gateway data plane** from Step 2. The agent is declared in Konnect as an **Agent** entity, which:
 
-* **AI A2A Proxy Plugin**: This is the core plugin responsible for:
-    * brokering agent-to-agent communication
-    * routing A2A protocol traffic
-    * mediating requests between agents
-    * standardizing communication semantics
-
-* **Key Auth Plugin**: The Key Authentication Plugin secures communication between agents by enforcing:
-    * API keys
-    * identity validation
-    * access policies
-
-* **OTel Plugin**: The OpenTelemetry Plugin exports metrics, logs and traces. This enables deep observability into:
-    * agent execution
-    * inter-agent latency
-    * request flows
-    * failures
-    * operational performance
-
-## Kong Konnect Plugins
-
-One of the main capabilities the Kong Gateway provides is extensibility. An extensive list of plugins allows you to implement specific policies to protect and control the APIs deployed in the gateway. The plugins offload critical and complex processing usually implemented by backend services and apps. With the Gateway and its plugins in place, the backend services can focus on business logic only, leading to a faster app development processes. Each plugin is responsible for specific functionality, including:
-
-* Authentication/authorization to implement security mechanisms such as basic authentication, LDAP, mutual TLS (mTLS), API key, open policy agent (OPA)-based access control policies, etc.
-* Traffic control to implement canary releases, mocking endpoints, and routing policies based on request headers, etc.
-* Transformations to transform requests before routing them to the upstreams and to transform responses before returning to the consumers.
-* Proxy Caching Advanced and GraphQL Proxy Caching Advanced cache and serve requested responses.
-* Rate limiting, rate limiting advanced, service protection, and GraphQL rate limiting advanced – rate limit how many HTTP requests can be made in a given time frame.
-* OpenID Connect and Upstream OAuth for session storage and token caching.
-* Integration with Kafka-based data/event streaming infrastructures.
-* WebSockets Size Limit and WebSockets Validator plugins to control the events sent by the devices for IoT projects where MQTT over WebSockets connections are extensively used.
-
-### Kong AI gateway plugins
-
-On the other hand, Kong AI Gateway leverages the existing Kong API Gateway extensibility model to provide specific AI-based plugins more precisely to protect LLM infrastructures, including:
-
-* **AI Proxy** and **AI Proxy Advanced** plugins use multi-LLM capability to abstract and load balance multiple LLM models based on policies, including latency time, model usage, semantics, etc.
-* Prompt engineering templates:
-    * **AI Prompt Template** plugin is responsible for pre-configuring AI prompts to users.
-    * **AI Prompt Decorator** plugin injects messages at the start or end of a caller’s chat history.
-    * **AI Prompt Guard** plugin lets you configure a series of PCRE-compatible regular expressions to allow and block specific prompts, words, phrases, etc and have more control over an LLM service.
-    * **AI Semantic Prompt Guard** plugin enables self-configurable semantic (or pattern-matching) prompt protection.
-* **AI Semantic Cache** plugin caches responses based on threshold to improve performance (and therefore end-user experience) while optimizing for cost.
-* **AI Rate Limiting Advanced** lets you tailor per-user or per-model policies based on the tokens returned by the LLM provider or craft a custom functions to count the tokens for requests.
-* **AI Request Transformer** and **AI Response Transformer** plugins seamlessly integrate with LLMs, enabling introspection and transformation of a request’s body before proxying it to the upstream service prior to forwarding the response to the client.
-* **MCP Proxy** and **MCP OAuth2** abstract and protect MCP Servers and RESTful API.
+* routes A2A traffic on its own path (`/a2a` here) and rewrites the agent card so clients keep talking through the gateway,
+* authenticates to the upstream agent, here with AWS SigV4 for AgentCore,
+* applies an **Auth Strategy** to callers (Step 5) and records A2A analytics in Konnect.
 
 ## Konnect Control Plane
 
-At the top-right, administrators interact with the Konnect Control Plane. The dotted management connection indicates that Konnect centrally manages Kong Agent Gateway configuration, including A2A routes, plugin policies, authentication settings, etc.
+At the top-right, administrators interact with the Konnect Control Plane. The dotted management connection indicates that Konnect centrally manages the AI Gateway's configuration, including agents, policies and authentication settings.
 
 Konnect distributes configuration to the Kong data plane nodes without being directly involved in runtime traffic.
 
 ## Observability and Metering
 
-Konnect provides out-of-the box Observability capabilities, including dashboard, reports, etc. At the sames, as described in the diagram, telemetry and usage data can be exported to external OpenTelemetry Observability Stack. Similarly, Konnect Metering & Billing service can be used to chargeback or quota enforcement.
+Konnect provides out-of-the box Observability capabilities, including dashboard, reports, etc. As described in the diagram, telemetry and usage data can be exported to external OpenTelemetry Observability Stack. Similarly, Konnect Metering & Billing service can be used to chargeback or quota enforcement.
 
 # The A2A Protocol
 
@@ -626,420 +571,108 @@ aws logs tail $LOGGROUPNAME \
 
 A Python traceback here usually means a missing dependency or an import error. Check `pyproject.toml` first.
 
-> **Checkpoint: the agent works on AgentCore.** `get-agent-runtime` prints `READY`, and the signed `awscurl` request returns the same `that's the response` artifact you saw locally.
+> **Checkpoint: the agent works on AgentCore.** `get-agent-runtime` prints `READY`, and the signed `awscurl` request returns the same `that's the response` artifact you saw locally. Keep `AGENTCORE_URL` exported: the next section uses it.
 
-# Kong Identity: the token issuer AgentCore will trust
 
-Kong can't produce the SigV4 signature the `agent` runtime requires, so Kong will front a second runtime that accepts JWT bearer tokens instead. That runtime needs to know which issuer to trust, so create the issuer first: an authorization server in **Kong Identity**, the OAuth2 server built into Konnect. Step 5 explores it in more detail.
+# Publish the agent on the AI Gateway
 
-The commands use the [Kong Identity API](https://developer.konghq.com/api/konnect/kong-identity) in the Konnect **US** region, and take each ID straight from its create response.
+[`code/ai-gateway/step3-agent.yaml`](code/ai-gateway/step3-agent.yaml) declares one **Agent** on the `kong-aws-ai` gateway:
 
-Create the authorization server:
-```
-AUTHZ_JSON=$(curl -s -X POST https://us.api.konghq.com/v1/auth-servers \
-  -H "Authorization: Bearer $PAT" \
-  --json '{"name":"AuthZ_Server_1","audience":"http://kong.dev","description":"AuthZ Server 1"}')
-echo "$AUTHZ_JSON" | jq '{id, name, audience, issuer}'
-export AUTHZ_SERVER_ID=$(echo "$AUTHZ_JSON" | jq -r .id)
-export ISSUER_URL=$(echo "$AUTHZ_JSON" | jq -r .issuer)
-```
-
-You should see an `id` and an issuer like `https://xxxxxx.us.identity.konghq.com/auth`. Authorization server names are unique per organization and region, so if the name is taken, pick another.
-
-Add a scope and a custom claim:
-```
-SCOPE_JSON=$(curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/scopes" \
-  -H "Authorization: Bearer $PAT" \
-  --json '{"name":"scope1","description":"scope1","default":false,"include_in_metadata":false,"enabled":true}')
-echo "$SCOPE_JSON" | jq '{id, name}'
-export SCOPE_ID=$(echo "$SCOPE_JSON" | jq -r .id)
-```
-
-```
-curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/claims" \
-  -H "Authorization: Bearer $PAT" \
-  --json '{"name":"claim1","value":"claim1","include_in_token":true,"include_in_all_scopes":false,"include_in_scopes":["'$SCOPE_ID'"],"enabled":true}' | jq '{id, name}'
+```yaml
+ai_gateway_agents:
+  - ref: agentcore-hello
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: agentcore-hello
+    display_name: AgentCore Hello World Agent
+    type: a2a
+    enabled: true
+    config:
+      url: !env AGENTCORE_URL
+      route:
+        paths:
+          - /a2a
+        strip_path: true
+      upstream:
+        auth:
+          type: aws
+          region: us-west-2
+      logging:
+        payloads: true
 ```
 
-Create the client, the machine-to-machine credential callers will use. Its tokens last **900 seconds (15 minutes)**: AgentCore rejects any token that expires within about a minute (`Ineffectual token, will expire within the next minute`), so a 60-second token would always fail.
-```
-CLIENT_JSON=$(curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/clients" \
-  -H "Authorization: Bearer $PAT" \
-  --json '{"name":"client1","grant_types":["client_credentials"],"allow_all_scopes":false,"allow_scopes":["'$SCOPE_ID'"],"access_token_duration":900,"id_token_duration":900,"response_types":["id_token","token"]}')
-echo "$CLIENT_JSON" | jq 'del(.client_secret)'
-export CLIENT_ID=$(echo "$CLIENT_JSON" | jq -r .id)
-export CLIENT_SECRET=$(echo "$CLIENT_JSON" | jq -r .client_secret)
-echo "secret length: ${#CLIENT_SECRET}"
-```
+- `config.url` is the runtime's invocation URL, read from `AGENTCORE_URL`.
+- `upstream.auth.type: aws` with no keys makes the gateway sign each call with SigV4, using the credentials Pod Identity gives the data plane.
+- `route.paths` publishes it at `/a2a`.
 
-Konnect shows the client secret only once, and these commands keep it in your shell rather than on screen. If you lose it, create a new client.
-
-Get a token and check the claims AgentCore will validate:
-```
-TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials" -d "client_id=$CLIENT_ID" \
-  -d "client_secret=$CLIENT_SECRET" -d "scope=scope1" | jq -r '.access_token')
-echo $TOKEN | jwt decode - | sed -n '/Token claims/,$p'
-curl -s $ISSUER_URL/.well-known/openid-configuration | jq '{issuer, jwks_uri}'
-```
-
-The token's `iss` must equal the `issuer` in the discovery document, and `client_id` must equal `$CLIENT_ID`. `exp` minus `iat` should be `900`.
-
-# A second runtime that accepts Kong Identity tokens
-
-Add a runtime named `agentjwt` to the same project, with a custom JWT authorizer. AgentCore fetches Kong Identity's signing keys from the discovery URL and accepts only tokens issued to your client. The CLI spells the key `customJwtAuthorizer`, while the AWS API spells it `customJWTAuthorizer`.
+Preview the change, then apply it, from the root of this repo:
 
 ```
-AUTH_CFG=$(jq -nc --arg d "$ISSUER_URL/.well-known/openid-configuration" --arg c "$CLIENT_ID" \
-  '{customJwtAuthorizer:{discoveryUrl:$d,allowedClients:[$c]}}')
-echo "$AUTH_CFG"
-
-agentcore add runtime --name agentjwt --language python --protocol A2A \
-  --authorizer-type CUSTOM_JWT --authorizer-configuration "$AUTH_CFG"
+kongctl diff --mode apply -f code/ai-gateway/step3-agent.yaml --pat "$PAT"
+kongctl apply -f code/ai-gateway/step3-agent.yaml --auto-approve --pat "$PAT"
 ```
 
-The command writes only template docs into `app/agentjwt/`. Give it the same code and dependencies as the first runtime, and point its entrypoint at `server_1.py`:
-```
-cp app/agent/server_1.py app/agentjwt/
-sed 's/^name = "agent"/name = "agentjwt"/' app/agent/pyproject.toml > app/agentjwt/pyproject.toml
-jq '.runtimes |= map(if .name=="agentjwt" then .entrypoint="server_1.py" else . end)' agentcore/agentcore.json > /tmp/ac.json && mv /tmp/ac.json agentcore/agentcore.json
-jq '.runtimes[] | {name, entrypoint, authorizerType, authorizerConfiguration}' agentcore/agentcore.json
-```
-
-You should see `agent` with no authorizer and `agentjwt` with `"authorizerType": "CUSTOM_JWT"`, your discovery URL and your client ID, both with `server_1.py`.
-
-Deploy again. This adds the second runtime and leaves the first as it is:
-```
-agentcore deploy --region us-west-2
-```
-
-Build the new runtime's URL:
-```
-export JWT_ARN=$(agentcore status --json | jq -r '.resources[] | select(.name=="agentjwt") | .arn')
-export JWT_URL="https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/$(jq -rn --arg a "$JWT_ARN" '$a|@uri')/invocations"
-echo $JWT_URL
-```
-
-Call it **directly**, with a bearer token and no SigV4 signature. Fetch a fresh token first:
-```
-TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials" -d "client_id=$CLIENT_ID" \
-  -d "client_secret=$CLIENT_SECRET" -d "scope=scope1" | jq -r '.access_token')
-
-curl -s -X POST "$JWT_URL" \
-  -H "Authorization: Bearer $TOKEN" \
-  --json '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"hi"}]}}}' | jq
-```
-
-The result contains the `that's the response` artifact. No session ID header is needed.
-
-> **Checkpoint: AgentCore trusts Kong Identity.** The `agentjwt` runtime answers a bearer-token call. From here on, the SigV4 `agent` runtime isn't used. You can keep it for comparison or remove it (see [Tearing this step down](#tearing-this-step-down)).
-
-**What the next section does.** The first command strips the host from `JWT_URL` and keeps only the path, which identifies the `agentjwt` runtime. The `cat > ai-a2a-proxy.yaml` block writes a decK file that defines:
-
-- a Kong **service** `a2a-agentcore` pointing at `bedrock-agentcore.us-west-2.amazonaws.com` plus that path,
-- a **route** `a2a-route` that answers on `/a2a`,
-- the **`ai-a2a-proxy`** plugin, set to log A2A statistics and payloads. It has no upstream authentication settings, so the caller's `Authorization` header passes through to AgentCore unchanged.
-
-`deck gateway sync` then pushes it to the `kong-aws` control plane, and Konnect hands it to your data plane on EKS.
-
-# Kong Agent Gateway
-
-## Kong AI A2A Proxy Plugin
-
-```
-export DECK_AGENTCORE_PATH="${JWT_URL#*bedrock-agentcore.us-west-2.amazonaws.com}"
-echo $DECK_AGENTCORE_PATH
-```
-
-It should print a path starting with `/runtimes/arn%3Aaws` and ending in `/invocations`.
-
-```
-cat > ai-a2a-proxy.yaml << 'EOF'
-_format_version: "3.0"
-services:
-- name: a2a-agentcore
-  protocol: https
-  host: bedrock-agentcore.us-west-2.amazonaws.com
-  port: 443
-  path: ${{ env "DECK_AGENTCORE_PATH" }}
-  routes:
-    - name: a2a-route
-      paths:
-      - "/a2a"
-      strip_path: true
-      protocols:
-      - http
-      - https
-      plugins:
-      - name: ai-a2a-proxy
-        instance_name: ai-a2a-proxy1
-        enabled: true
-        config:
-          max_request_body_size: 0
-          logging:
-            log_statistics: true
-            log_payloads: true
-EOF
-```
-
-## Configure Kong Data Plane
-```
-deck gateway ping --konnect-control-plane-name kong-aws --konnect-token $PAT
-```
-
-```
-deck gateway reset --konnect-control-plane-name kong-aws --konnect-token $PAT -f
-deck gateway sync --konnect-control-plane-name kong-aws --konnect-token $PAT ai-a2a-proxy.yaml
-```
-
-The `sync` should report `Created: 3` (service, route and plugin).
+The preview shows one `ai_gateway_agent` to create. In Konnect it appears under **AI Gateway → Agents**.
 
 ## Send a request
 
-Wait about 10 seconds for Konnect to push the configuration, get a fresh token, then call the agent through Kong:
+Wait about 10 seconds for Konnect to push the configuration, then call the agent through the gateway, with no AWS credentials:
 
 ```
-TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=client_credentials" -d "client_id=$CLIENT_ID" \
-  -d "client_secret=$CLIENT_SECRET" -d "scope=scope1" | jq -r '.access_token')
-
-curl -sX POST https://kong-dp.$AWS_DOMAIN/a2a \
-     -H "Authorization: Bearer $TOKEN" \
-     --json '{
-       "jsonrpc": "2.0",
-       "id": "1",
-       "method": "message/send",
-       "params": {
-         "message": {
-           "kind": "message",
-           "messageId": "msg-001",
-           "role": "user",
-           "parts": [
-             {
-               "kind": "text",
-               "text": "How much is 100 USD in EUR?"
-             }
-           ]
-         }
-       }
-     }' | jq
+curl -s -X POST https://ai-dp.$AWS_DOMAIN/a2a \
+  --json '{
+    "jsonrpc": "2.0",
+    "id": "1",
+    "method": "message/send",
+    "params": {
+      "message": {
+        "kind": "message",
+        "messageId": "msg-001",
+        "role": "user",
+        "parts": [
+          {
+            "kind": "text",
+            "text": "How much is 100 USD in EUR?"
+          }
+        ]
+      }
+    }
+  }' | jq
 ```
 
-Now send the same request **without** the `Authorization` header. AgentCore refuses it:
-```
-{"jsonrpc":"2.0","error":{"code":-32001,"message":"Missing Authentication Token"}}
-```
-
-At this point Kong passes every request through and only AgentCore checks the token. [Step 5](5-kong-identity-oauth2.md) adds the check at the gateway.
-
-> **Checkpoint: the agent works through Kong.** With a token, the `curl` to `https://kong-dp.$AWS_DOMAIN/a2a` returns the same artifact as the direct call. The caller needs no AWS credentials, only a Kong Identity token.
-
-The code below is the same as [`code/a2a/client_1.py`](code/a2a/client_1.py). Set it up as "Agent 2" in [python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md), and point `base_url` at `https://kong-dp.<your domain>/a2a`. It resolves the Agent Card through Kong, then lets you chat with the AgentCore agent.
-
-> **Not yet updated for tokens.** `client_1.py` doesn't send an `Authorization` header, so AgentCore (and, after Step 5, Kong) rejects its calls. To use it, add the header to the `httpx.AsyncClient`, for example `headers={"Authorization": f"Bearer {token}"}`. This hasn't been tested yet.
-
-# The second Agent
+The result contains the `that's the response` artifact. The data plane log shows the gateway signing the call:
 
 ```
-import asyncio
-import httpx
-from a2a.client import A2ACardResolver, ClientFactory, ClientConfig
-from a2a.types import (
-    Message,
-    Part,
-    TextPart,
-    Role,
-    TransportProtocol,
-)
-
-from uuid import uuid4
-
-
-
-async def main():
-    base_url = 'http://kong-dp.kong-demo.com/a2a'
-
-    async with httpx.AsyncClient(timeout=60.0 ) as httpx_client:
-        # 1. Resolve the agent card
-        resolver = A2ACardResolver(
-            httpx_client=httpx_client,
-            base_url=base_url,
-        )
-        agent_card = await resolver.get_agent_card()
-        print("----- Agent Card -----")
-        print(agent_card.model_dump_json(indent=2))
-        print("----- Agent Card -----")
-
-        # 2. Create client via ClientFactory
-        factory = ClientFactory(
-            ClientConfig(
-                supported_transports=[TransportProtocol.jsonrpc],
-                use_client_preference=True,
-                httpx_client=httpx_client,
-            )
-        )
-        client = factory.create(agent_card)
-
-        # 3. Send Messages
-        print("\nAgent ready. Type 'quit' to exit.\n")
-        while True:
-            try:
-                prompt = input("User: ")
-            except (EOFError, KeyboardInterrupt):
-                break
-            if prompt.strip().lower() in ("quit", "exit"):
-                break
-            message = Message(
-                role=Role.user,
-                parts=[Part(root=TextPart(text=prompt))],
-                messageId=str(uuid4()),
-            )
-
-            async for event in client.send_message(message):
-                if isinstance(event, Message):
-                    for part in event.parts:
-                        print(part.root.text)
-                else:
-                    task, update = event
-                    print(task)
-
-
-
-asyncio.run(main())
+kubectl logs -n kong deploy/kong-aws-ai-dp --since=5m | grep -i aws_iam
 ```
+
+You should see `[ai-a2a-proxy] Creating aws_iam auth handler`.
+
+> **Checkpoint: the agent works through the AI Gateway.** A plain `curl` to `https://ai-dp.$AWS_DOMAIN/a2a` returns the same artifact as the signed `awscurl` call. Kong signed the call to AgentCore with its Pod Identity role.
+
+## A second agent
+
+[`code/a2a/client_1.py`](code/a2a/client_1.py) is a small A2A client that resolves the Agent Card through the gateway and lets you chat with the agent. Set it up as "Agent 2" in [python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md) and point `base_url` at `https://ai-dp.<your domain>/a2a`. It hasn't been tested against the AI Gateway yet, and after Step 5 it would also need to send an `Authorization: Bearer` header.
 
 ---
 
 ## Verify
 
-A `curl -sX POST https://kong-dp.<your domain>/a2a ...` with a fresh Kong Identity token (the "Send a request" command under *Kong Agent Gateway*) returns a JSON-RPC result whose artifact text is `that's the response`. Without a token, the call returns `Missing Authentication Token`.
+A plain `curl -s -X POST https://ai-dp.<your domain>/a2a ...` (the "Send a request" command above) returns a JSON-RPC result whose artifact text is `that's the response`, and the data plane log shows `Creating aws_iam auth handler`.
 
-That pair of responses proves the whole chain: Kong on EKS received the call and forwarded it, AgentCore validated the Kong Identity token, and the agent answered.
+That proves the whole chain: the AI Gateway data plane on EKS received the call, signed it to AgentCore with the Pod Identity IAM role, and the agent answered.
 
 ## Common problems
 
 - **`agentcore create` says `--defaults` is unknown.** Current CLI versions use `--template`. Run `agentcore create --help` for the list.
 - **The runtime starts, then crashes with `No module named 'a2a.helpers'`.** The template pins `a2a-sdk` 0.3.x. Replace `pyproject.toml` as shown above. Locally, also run `uv lock --upgrade-package a2a-sdk`.
-- **`agentcore add runtime` says `authorizerConfiguration with customJwtAuthorizer is required`.** The JSON key must be spelled `customJwtAuthorizer` for the CLI.
-- **A direct or Kong call returns `Ineffectual token, will expire within the next minute`.** The client's tokens are too short-lived. Set `access_token_duration` to 900 or more (a `PATCH` on the client, with the same fields as the create call) and fetch a new token.
-- **`deck gateway sync` fails with `validation error: unknown field` on `ai-a2a-proxy`.** The config contains an `auth:` block. This plugin has no upstream auth settings in Kong 3.14. Remove the block.
-- **Kong returns `Missing Authentication Token`.** The request had no `Authorization: Bearer` header, or the token wasn't issued to the client in the runtime's `allowedClients`.
 - **`awscurl` returns 403.** `awscurl` signs with your local AWS credentials. Make sure they're set (`aws configure`, or export them from an `aws login` session) and allowed to invoke the runtime.
-- **Kong returns 404 "no Route matched".** The configuration hasn't reached the data plane yet, or `deck gateway sync` failed. Re-run this step's `deck gateway sync` and check its output.
-- **`DECK_AGENTCORE_PATH` is empty.** `JWT_URL` wasn't exported in the same shell. Re-run the `export JWT_ARN=...` and `export JWT_URL=...` commands.
+- **The gateway call returns `403` or `Missing Authentication Token` from AWS.** The data plane isn't signing with IAM credentials. Check that it runs as `kaigateway-podid-sa` (Step 2), and that the Pod Identity role allows `bedrock-agentcore:InvokeAgentRuntime`.
+- **The gateway returns 404 "no Route matched".** The agent hasn't reached the data plane yet, or `kongctl apply` failed. Wait a few seconds, then check the apply output.
+- **kongctl says `AGENTCORE_URL` is empty, or the agent's URL is wrong.** Re-run the `export AGENTCORE_ARN=...` and `export AGENTCORE_URL=...` commands in the same shell.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-3-a2a-and-agentcore).
 
 ## Tearing this step down
 
-`agentcore remove all -y`, then `agentcore deploy`, removes both runtimes (this teardown hasn't been re-tested with two runtimes). Delete the `AuthZ_Server_1` authorization server in Konnect (**Identity**) once you've finished Step 5.
+Section 4 of [docs/teardown.md](docs/teardown.md) removes the AgentCore runtime. Deleting the AI Gateway (section 1) removes the Agent.
 
 [← Step 2](2-kong-konnect-data-plane.md) · **Step 3** · [Step 4 →](4-mcp-gateway.md)
-
----
-
-## Appendix: working notes
-
-> Scratch notes kept for reference: a CLI version check, a link to AgentCore Gateway's MCP semantic search, and two `jq` experiments that list tool names from a chat request. They're not part of the deployment path.
-
-aws --version
-aws-cli/2.15.46 Python/3.11.8 Linux/5.10.215–203.850.amzn2.x86_64 exe/x86_64.ubuntu.24 prompt/off
-
---- MCP Semantic Search tool
-https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-using-mcp-semantic-search.html
-
-echo "{\"messages\":[{\"role\":\"system\",\"content\":\"Be helpful\"},{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}],\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Get orders for a user\",\"name\":\"get-orders\",\"parameters\":{\"properties\":{\"query_userid\":{\"type\":\"string\",\"description\":\"User ID to filter orders\"}},\"additionalProperties\":false,\"required\":[\"query_userid\"],\"type\":\"object\"}},\"type\":\"function\"},{\"function\":{\"description\":\"Get users\",\"name\":\"get-users\",\"parameters\":{\"properties\":{\"query_id\":{\"type\":\"string\",\"description\":\"Optional user ID\"}},\"required\":[],\"additionalProperties\":false,\"type\":\"object\"}},\"type\":\"function\"},{\"function\":{\"description\":\"Get the current balance for a given customer.\",\"name\":\"get_balance\",\"parameters\":{\"properties\":{\"customer_id\":{\"title\":\"Customer Id\",\"description\":\"Property customer_id\",\"type\":\"string\"}},\"required\":[\"customer_id\"],\"title\":\"get_balanceArguments\",\"type\":\"object\"}},\"type\":\"function\"}],\"stream\":true,\"model\":\"us.anthropic.claude-sonnet-4-20250514-v1:0\"}" | jq 
-
-{
-  "messages": [
-    {
-      "role": "system",
-      "content": "Be helpful"
-    },
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "hi"
-        }
-      ]
-    }
-  ],
-  "stream_options": {
-    "include_usage": true
-  },
-  "tools": [
-    {
-      "function": {
-        "description": "Get orders for a user",
-        "name": "get-orders",
-        "parameters": {
-          "properties": {
-            "query_userid": {
-              "type": "string",
-              "description": "User ID to filter orders"
-            }
-          },
-          "additionalProperties": false,
-          "required": [
-            "query_userid"
-          ],
-          "type": "object"
-        }
-      },
-      "type": "function"
-    },
-    {
-      "function": {
-        "description": "Get users",
-        "name": "get-users",
-        "parameters": {
-          "properties": {
-            "query_id": {
-              "type": "string",
-              "description": "Optional user ID"
-            }
-          },
-          "required": [],
-          "additionalProperties": false,
-          "type": "object"
-        }
-      },
-      "type": "function"
-    },
-    {
-      "function": {
-        "description": "Get the current balance for a given customer.",
-        "name": "get_balance",
-        "parameters": {
-          "properties": {
-            "customer_id": {
-              "title": "Customer Id",
-              "description": "Property customer_id",
-              "type": "string"
-            }
-          },
-          "required": [
-            "customer_id"
-          ],
-          "title": "get_balanceArguments",
-          "type": "object"
-        }
-      },
-      "type": "function"
-    }
-  ],
-  "stream": true,
-  "model": "us.anthropic.claude-sonnet-4-20250514-v1:0"
-}
-
-echo "{\"messages\":[{\"content\":\"Be helpful\",\"role\":\"system\"},{\"content\":[{\"text\":\"list all users\",\"type\":\"text\"}],\"role\":\"user\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"x_amz_bedrock_agentcore_search\",\"description\":\"A special tool that returns a trimmed down list of tools given a context. Use this tool only when there are many tools available and you want to get a subset that matches the provided context.\",\"parameters\":{\"required\":[\"query\"],\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\",\"description\":\"Property query\"}}}}},{\"type\":\"function\",\"function\":{\"name\":\"kong-agentcore-mcp___get_balance\",\"description\":\"Get the current balance for a given customer.\",\"parameters\":{\"required\":[\"customer_id\"],\"type\":\"object\",\"properties\":{\"customer_id\":{\"description\":\"Property customer_id\",\"type\":\"string\",\"title\":\"Customer Id\"}}}}},{\"type\":\"function\",\"function\":{\"name\":\"kong-mcp-gateway___get-orders\",\"description\":\"Get orders for a user\",\"parameters\":{\"additionalProperties\":false,\"required\":[\"query_userid\"],\"type\":\"object\",\"properties\":{\"query_userid\":{\"type\":\"string\",\"description\":\"User ID to filter orders\"}}}}},{\"type\":\"function\",\"function\":{\"name\":\"kong-mcp-gateway___get-users\",\"description\":\"Get users\",\"parameters\":{\"required\":[],\"additionalProperties\":false,\"type\":\"object\",\"properties\":{\"query_id\":{\"type\":\"string\",\"description\":\"Optional user ID\"}}}}}],\"stream_options\":{\"include_usage\":true},\"model\":\"us.anthropic.claude-sonnet-4-20250514-v1:0\",\"stream\":true}" \
-| jq -r '.tools[].function.name'
-get-orders
-get-users
-get_balance
-

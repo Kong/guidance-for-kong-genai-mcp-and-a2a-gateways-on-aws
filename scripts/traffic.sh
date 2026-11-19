@@ -4,19 +4,19 @@
 #
 # Each round sends:
 #   /a2a  with a valid token (expect 200), without a token and with a bad token (expect 401)
-#   /mcp  a tools/call with a valid token (expect 200), and one without a token
-#         (401 when /mcp requires a token, as in Step 6; 200 on Step 4's open /mcp)
-#   /v1   if MODEL is set: a chat call with a valid token (expect 200) and one without (expect 401)
+#   /mcp  a tools/call with a valid token (expect 200), and one without a token (expect 401)
+#   /v1   a chat call to MODEL with a valid token (expect 200) and one without (expect 401)
 #
 # Needs these exported: AWS_DOMAIN, ISSUER_URL, CLIENT_ID, CLIENT_SECRET
 # Optional:
-#   KONG_HOST  the gateway (default kong-dp.$AWS_DOMAIN; use ai-dp.$AWS_DOMAIN for Step 6)
+#   KONG_HOST  the gateway (default ai-dp.$AWS_DOMAIN)
 #   KONG_IP    pins KONG_HOST to one address, if your local DNS can't resolve it yet
-#   MODEL      an LLM route to include, e.g. MODEL=nova-micro (each call costs a little)
+#   MODEL      the model to call (default nova-micro; each call costs a fraction of a cent).
+#              Set MODEL= to leave the model out.
 #   ROUNDS     how many rounds (default 20)
 #   PAUSE      seconds between rounds (default 2)
 #
-# Usage:  KONG_HOST=ai-dp.$AWS_DOMAIN MODEL=nova-micro ./scripts/traffic.sh
+# Usage:  ROUNDS=20 ./scripts/traffic.sh
 
 for tool in curl jq; do
   command -v "$tool" >/dev/null 2>&1 || { echo "Missing tool: $tool"; exit 2; }
@@ -25,7 +25,8 @@ for v in AWS_DOMAIN ISSUER_URL CLIENT_ID CLIENT_SECRET; do
   if [ -z "${!v:-}" ]; then echo "Missing $v (export it first)"; exit 2; fi
 done
 
-HOST="${KONG_HOST:-kong-dp.${AWS_DOMAIN}}"
+HOST="${KONG_HOST:-ai-dp.${AWS_DOMAIN}}"
+MODEL="${MODEL-nova-micro}"
 ROUNDS="${ROUNDS:-20}"
 PAUSE="${PAUSE:-2}"
 
@@ -82,7 +83,7 @@ for i in $(seq 1 "$ROUNDS"); do
   m_none=$(code -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" --data "$MCP_INIT");             tally "$m_none"
 
   line="round ${i}/${ROUNDS}  a2a: ${a_ok} ${a_none} ${a_bad}  mcp: ${m_ok} ${m_none}"
-  if [ -n "${MODEL:-}" ]; then
+  if [ -n "$MODEL" ]; then
     prompt=${PROMPTS[$(( (i - 1) % ${#PROMPTS[@]} ))]}
     body=$(jq -nc --arg m "$MODEL" --arg p "$prompt" '{model:$m, messages:[{role:"user", content:$p}]}')
     v_ok=$(code "https://${HOST}/v1/chat/completions" "${AUTH[@]}" --json "$body");             tally "$v_ok"

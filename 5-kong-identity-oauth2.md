@@ -1,33 +1,84 @@
-# Step 5: Protect the A2A route with Kong Identity (OAuth2)
+# Step 5: Require Kong Identity tokens on the agent and tools
 
-[← Step 4](4-mcp-gateway.md) · **Step 5** · [Step 6 →](6-konnect-ai-gateway.md)
+[← Step 4](4-mcp-gateway.md) · **Step 5** · [Step 6 →](6-llm-gateway-bedrock.md)
 
 ## Why this step
 
-At the end of Step 3, the AgentCore runtime only answers calls that carry a valid Kong Identity token. But Kong forwards *every* request to AWS, valid or not, and leaves the rejection to AgentCore. That works, but the gateway can't tell callers apart, can't apply per-client limits, and gives the same protection only to agents that check tokens themselves.
-
-This step makes Kong check the token first. In OAuth2 terms, callers use the **client credentials** grant: each agent or app has a client ID and secret, exchanges them for a short-lived token, and the gateway checks that token on every call. Invalid calls stop at Kong and never reach AWS. Valid calls continue to AgentCore, which checks the token again.
+At the end of Step 4, anyone who knows the `/a2a` or `/mcp` URL can call your agent and your tools. API keys would help, but once agents call agents and tools across teams, you'll want short-lived, scoped tokens that you can check and revoke. In OAuth2 terms that's the **client credentials** grant: each agent or app has a client ID and secret, exchanges them for a short-lived token, and the gateway checks that token on every call. Invalid calls stop at Kong and never reach AWS or your tools.
 
 You have options for the token issuer on AWS. **Amazon Cognito** is a common choice. This guide uses **Kong Identity**, the OAuth2 authorization server built into Konnect, so tokens, scopes and gateway policy are managed in one place.
 
 ## What it does, in plain English
 
-1. Explores the Kong Identity **authorization server**, **scope**, **claim** and **client** you created in Step 3.
+1. Creates an **authorization server** in Kong Identity with the Konnect API (`AuthZ_Server_1`, audience `http://kong.dev`), with a **scope** (`scope1`), a **custom claim** (`claim1`) and a **client** (`client1`) that may use the client credentials grant.
 2. Plays both sides by hand: gets a token as the client, decodes it with `jwt-cli`, then **introspects** it as the gateway will.
-3. Adds Kong's **OpenID Connect** plugin to Step 3's `a2a-route`, so Kong checks every token with Kong Identity before the call reaches AgentCore.
-4. Calls `/a2a` without a token and with a bad token (both rejected by Kong with `401`) and with a valid one (the agent answers).
-
-The plugin is added with `deck gateway apply`, which doesn't delete anything, so Step 4's `/mcp` route keeps working.
+3. Declares an **Auth Strategy** on the AI Gateway that checks tokens with Kong Identity, and attaches it to the Step 3 agent and the Step 4 MCP server.
+4. Calls `/a2a` and `/mcp` without a token and with a bad one (both rejected by Kong with `401`), then with a valid one.
 
 ## Before you start
 
-- Step 3 is complete, including its Kong Identity section, so the `a2a-route` exists on `kong-aws` and AgentCore trusts your client.
-- `PAT`, `AWS_DOMAIN`, `AUTHZ_SERVER_ID`, `ISSUER_URL`, `CLIENT_ID` and `CLIENT_SECRET` are exported (Steps 2 and 3). The API calls use the Konnect **US** region (`us.api.konghq.com`).
+- Steps 2 to 4 are complete. `PAT`, `AWS_DOMAIN` and `AGENTCORE_URL` are exported (Steps 2 and 3). The API calls use the Konnect **US** region (`us.api.konghq.com`).
 - `jwt-cli` is installed for `jwt decode`.
 
-> **Tested.** This step was run end to end against Kong Gateway `3.14.0.3` on the guide's EKS and Konnect setup. The data plane there enforces global TLS certificate verification, which is why the plugin below sets `ssl_verify: true`.
+> **Tested.** This step was run end to end against the `kong/kong-ai-gateway:2.3.1` data plane with kongctl `1.28.4`.
 
 ---
+
+# Create the token issuer in Kong Identity
+
+The commands use the [Kong Identity API](https://developer.konghq.com/api/konnect/kong-identity) in the Konnect **US** region, and take each ID straight from its create response.
+
+Create the authorization server:
+```
+AUTHZ_JSON=$(curl -s -X POST https://us.api.konghq.com/v1/auth-servers \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"AuthZ_Server_1","audience":"http://kong.dev","description":"AuthZ Server 1"}')
+echo "$AUTHZ_JSON" | jq '{id, name, audience, issuer}'
+export AUTHZ_SERVER_ID=$(echo "$AUTHZ_JSON" | jq -r .id)
+export ISSUER_URL=$(echo "$AUTHZ_JSON" | jq -r .issuer)
+```
+
+You should see an `id` and an issuer like `https://xxxxxx.us.identity.konghq.com/auth`. Authorization server names are unique per organization and region, so if the name is taken, pick another.
+
+Add a scope and a custom claim:
+```
+SCOPE_JSON=$(curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/scopes" \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"scope1","description":"scope1","default":false,"include_in_metadata":false,"enabled":true}')
+echo "$SCOPE_JSON" | jq '{id, name}'
+export SCOPE_ID=$(echo "$SCOPE_JSON" | jq -r .id)
+```
+
+```
+curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/claims" \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"claim1","value":"claim1","include_in_token":true,"include_in_all_scopes":false,"include_in_scopes":["'$SCOPE_ID'"],"enabled":true}' | jq '{id, name}'
+```
+
+Create the client, the machine-to-machine credential callers will use. Its tokens last **900 seconds (15 minutes)**, long enough to run this step's tests with one token.
+```
+CLIENT_JSON=$(curl -s -X POST "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID/clients" \
+  -H "Authorization: Bearer $PAT" \
+  --json '{"name":"client1","grant_types":["client_credentials"],"allow_all_scopes":false,"allow_scopes":["'$SCOPE_ID'"],"access_token_duration":900,"id_token_duration":900,"response_types":["id_token","token"]}')
+echo "$CLIENT_JSON" | jq 'del(.client_secret)'
+export CLIENT_ID=$(echo "$CLIENT_JSON" | jq -r .id)
+export CLIENT_SECRET=$(echo "$CLIENT_JSON" | jq -r .client_secret)
+echo "secret length: ${#CLIENT_SECRET}"
+```
+
+Konnect shows the client secret only once, and these commands keep it in your shell rather than on screen. If you lose it, create a new client.
+
+Get a token and look at its claims:
+```
+TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" -d "client_id=$CLIENT_ID" \
+  -d "client_secret=$CLIENT_SECRET" -d "scope=scope1" | jq -r '.access_token')
+echo $TOKEN | jwt decode - | sed -n '/Token claims/,$p'
+curl -s $ISSUER_URL/.well-known/openid-configuration | jq '{issuer, jwks_uri}'
+```
+
+The token's `iss` equals the `issuer` in the discovery document, and `client_id` equals `$CLIENT_ID`. `exp` minus `iat` is `900`.
 
 # Explore Kong Identity
 
@@ -136,95 +187,70 @@ Once the token expires (15 minutes for this client), the endpoint returns:
 }
 ```
 
-# Protect the A2A route
+# Protect the agent and the MCP server
 
-Kong's [OpenID Connect plugin](https://developer.konghq.com/plugins/openid-connect/) in `introspection` mode asks Kong Identity "is this token active?" on every request, and rejects the request if it isn't. It uses the same client ID and secret you just used for introspection. When the token is valid, Kong forwards the request with its `Authorization` header unchanged, so AgentCore can check the token again.
+An **Auth Strategy** of type `openid-connect` in `introspection` mode asks Kong Identity "is this token active?" on every request, and rejects the request if it isn't. It uses the same client ID and secret you just used for introspection.
 
-Set the values the decK file reads. `cache_tokens_salt` must be an explicit value: decK refuses to sync the plugin without one, so that later syncs don't regenerate it.
+[`code/ai-gateway/step5-auth.yaml`](code/ai-gateway/step5-auth.yaml) declares the strategy, `kong-identity-oidc`, and re-declares the Step 3 agent and the Step 4 MCP server with an `access` block that references it:
 
-```bash
-export DECK_ISSUER=$ISSUER_URL
-export DECK_KONG_IDENTITY_INTROSPECTION_URL=$ISSUER_URL/introspect
-export DECK_CLIENT_ID=$CLIENT_ID
-export DECK_CLIENT_SECRET=$CLIENT_SECRET
-export DECK_CACHE_TOKENS_SALT=$(openssl rand -hex 16)
-```
+- **Auth Strategy:** `issuer`, `client_id`, `client_secret`, `auth_methods: [introspection]` and `introspection_endpoint`, read from the environment. It also sets `ssl_verify: true` and an explicit `cache_tokens_salt`, which kongctl requires so a later apply doesn't regenerate it.
+- **Agent:** `access.auth_strategies: [!ref kong-identity-oidc]`.
+- **MCP server:** an MCP server's `access` block has a different shape. It needs `acl_attribute_type: consumer`, and it lists strategies by **name** (`!ref kong-identity-oidc#name`).
 
-Write a decK file that attaches the plugin to Step 3's `a2a-route`:
+Set the values the file reads. The client secret is sent to Konnect as a secret and never written to the file:
 
 ```bash
-cat > a2a-oidc.yaml << 'EOF'
-_format_version: "3.0"
-plugins:
-- name: openid-connect
-  route: a2a-route
-  instance_name: openid-connect-a2a-kong-identity
-  enabled: true
-  config:
-    issuer: ${{ env "DECK_ISSUER" }}
-    client_id:
-    - ${{ env "DECK_CLIENT_ID" }}
-    client_secret:
-    - ${{ env "DECK_CLIENT_SECRET" }}
-    auth_methods:
-    - introspection
-    introspection_endpoint: ${{ env "DECK_KONG_IDENTITY_INTROSPECTION_URL" }}
-    cache_tokens_salt: ${{ env "DECK_CACHE_TOKENS_SALT" }}
-    ssl_verify: true
-EOF
+export INTROSPECTION_URL=$ISSUER_URL/introspect
+export CACHE_TOKENS_SALT=$(openssl rand -hex 16)
 ```
 
-> **Why `ssl_verify: true`.** The plugin's `ssl_verify` defaults to `false`. A data plane with global TLS certificate verification turned on (`tls_certificate_verify`) **rejects the whole configuration** with `ssl_verify cannot be disabled` and keeps running the previous one. Nothing fails in decK or Konnect; the new plugin, and anything applied after it, silently doesn't take effect. Setting it to `true` works on every data plane.
-
-Apply it. Like Step 4, `deck gateway apply` adds the plugin and leaves the rest of the configuration alone:
+Keep the same `CACHE_TOKENS_SALT` value for later applies, including Step 6.
 
 ```bash
-deck gateway apply --konnect-control-plane-name kong-aws --konnect-token $PAT a2a-oidc.yaml
+kongctl diff --mode apply -f code/ai-gateway/step5-auth.yaml --pat "$PAT"
+kongctl apply -f code/ai-gateway/step5-auth.yaml --auto-approve --pat "$PAT"
 ```
 
-Wait about 10 seconds. To confirm the data plane accepted the new configuration, check its log for errors:
+The preview shows one `ai_gateway_auth_strategy` to create, with the secret and the `!env` values redacted, and the agent and MCP server to update with their `access` block. In Konnect the strategy appears under the gateway's **Auth strategies** tab.
+
+kongctl validates the whole file before it changes anything. If it reports an error, nothing in the file was applied, so fix the error and run it again.
+
+## Test the agent
+
+Wait about 10 seconds, then:
 
 ```bash
-kubectl logs -n kong $(kubectl get pod -n kong -o name | grep dataplane-kong-aws) --since=2m | grep -i -E "error|invalid"
+A2A='{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"hi"}]}}}'
+
+echo "--- no token:"
+curl -si -X POST https://ai-dp.$AWS_DOMAIN/a2a --json "$A2A" | grep -i -E "^HTTP|x-kong-upstream-latency"
+echo "--- bad token:"
+curl -si -X POST https://ai-dp.$AWS_DOMAIN/a2a -H "Authorization: Bearer not-a-real-token" --json "$A2A" | grep -i -E "^HTTP|x-kong-upstream-latency"
+echo "--- valid token:"
+TOKEN=$(curl -s -X POST "$ISSUER_URL/oauth/token" -d grant_type=client_credentials \
+  -d client_id=$CLIENT_ID -d client_secret=$CLIENT_SECRET -d scope=scope1 | jq -r .access_token)
+curl -s -X POST https://ai-dp.$AWS_DOMAIN/a2a -H "Authorization: Bearer $TOKEN" --json "$A2A" \
+  | jq '.result.artifacts[0].parts[0].text'
 ```
 
-No output is good.
+- **No token and bad token:** `HTTP/1.1 401 Unauthorized` with **no** `X-Kong-Upstream-Latency` header. That header only appears when a request went upstream, so its absence shows Kong rejected the call itself.
+- **Valid token:** `"that's the response"`. Kong checked the token with Kong Identity, then signed the call to AgentCore with its IAM role as in Step 3.
 
-### Call the A2A route without a token
-
-The first line of the response should be `HTTP/1.1 401 Unauthorized`, with a `WWW-Authenticate: Bearer ... error="invalid_token"` header:
+## Test the MCP server
 
 ```bash
-curl -si -X POST https://kong-dp.$AWS_DOMAIN/a2a \
-  --json '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"hi"}]}}}' \
-  | grep -i -E "^HTTP|x-kong-upstream-latency|www-authenticate"
+MCP_HDRS=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
+MCP_INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
+echo "--- no token:"
+curl -s -o /dev/null -w "%{http_code}\n" -X POST https://ai-dp.$AWS_DOMAIN/mcp "${MCP_HDRS[@]}" --data "$MCP_INIT"
+echo "--- valid token:"
+curl -s -D mcp-headers.txt -X POST https://ai-dp.$AWS_DOMAIN/mcp "${MCP_HDRS[@]}" -H "Authorization: Bearer $TOKEN" --data "$MCP_INIT"
+SID=$(grep -i '^mcp-session-id:' mcp-headers.txt | awk '{print $2}' | tr -d '\r')
+curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp "${MCP_HDRS[@]}" -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: $SID" \
+  --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-123"}}}'
 ```
 
-**Check who rejected it.** If Kong rejected the call, the response has **no** `X-Kong-Upstream-Latency` header, because it never went upstream. If that header is present, the call reached AgentCore, which means the plugin isn't active (see the log check above).
-
-### Call it with a bad token
-
-```bash
-curl -si -X POST https://kong-dp.$AWS_DOMAIN/a2a -H "Authorization: Bearer not-a-real-token" \
-  --json '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"hi"}]}}}' \
-  | grep -i -E "^HTTP|x-kong-upstream-latency|www-authenticate"
-```
-
-Again a `401` from Kong, with no upstream latency header.
-
-### Call it with a token
-
-Get a fresh token by running the command under [Token Endpoint](#token-endpoint) again. Then send the same request with it:
-
-```bash
-curl -s -X POST https://kong-dp.$AWS_DOMAIN/a2a \
-  -H "Authorization: Bearer $TOKEN" \
-  --json '{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"How much is 100 USD in EUR?"}]}}}' | jq
-```
-
-This time the agent on AgentCore answers with the `that's the response` artifact. Kong checked the token with Kong Identity and passed it on, and AgentCore checked it again. The caller needs an OAuth2 token, never AWS credentials.
-
-> **What about `/mcp`?** MCP clients expect the MCP authorization flow, where the server tells the client where to get a token. Kong's MCP OAuth2 plugin handles that, and is the natural next step for protecting Step 4's route.
+Without a token: `401`. With one: the initialize result, then the tool's echo with `"isError":false`.
 
 ---
 
@@ -232,20 +258,18 @@ This time the agent on AgentCore answers with the `that's the response` artifact
 
 1. `curl -s $ISSUER_URL/.well-known/openid-configuration | jq` returns your authorization server's OpenID configuration.
 2. `echo $TOKEN | jwt decode -` shows `"aud": ["http://kong.dev"]`, `"scope": "scope1"` and `"claim1": "claim1"`.
-3. A call to `/a2a` **without** a token, or with a bad one, returns `401 Unauthorized` with no `X-Kong-Upstream-Latency` header. The same call **with** a fresh token returns the agent's `that's the response` artifact.
-
-[`scripts/verify.sh`](scripts/verify.sh) runs these checks, plus Step 4's, in one go. See [docs/demo.md](docs/demo.md).
+3. Calls to `/a2a` and `/mcp` **without** a token, or with a bad one, return `401` from Kong. The same calls **with** a fresh token reach the agent and the tools.
 
 ## Common problems
 
-- **decK says `openid-connect plugin requires explicit non-empty config values for cache_tokens_salt`.** `DECK_CACHE_TOKENS_SALT` isn't set in this shell. Export it and re-run the apply.
-- **The no-token call returns 401, but with an `X-Kong-Upstream-Latency` header, or `/mcp` suddenly returns 404.** The data plane rejected the new configuration and is still running the old one. Check its log (`kubectl logs ... | grep error`). `ssl_verify cannot be disabled` means the plugin is missing `ssl_verify: true`.
-- **A call with a token still returns `401`.** The token has probably expired (15-minute lifetime). Get a new one and call straight away. If it still fails, introspect the token by hand as shown above to see whether Kong Identity considers it active.
-- **`deck gateway apply` reports that `a2a-route` doesn't exist.** Step 3's configuration isn't on `kong-aws`. Re-run Step 3's `deck gateway sync`, then Step 4's and this step's `apply` commands.
+- **kongctl says `config.cache_tokens_salt is required`.** Export `CACHE_TOKENS_SALT` before `diff` or `apply`.
+- **kongctl says `could not unmarshal ... into any supported union types for AIGatewayMCPServerListenerAccess`.** The MCP server's `access` block has the agent's shape. It needs `acl_attribute_type: consumer` and the strategy referenced by name (`!ref kong-identity-oidc#name`), as in `step5-auth.yaml`.
+- **`/a2a` or `/mcp` still answers without a token.** The apply didn't happen. kongctl stops on the first invalid entity and applies nothing. Re-run `kongctl diff` and fix any error first.
+- **A call with a token still returns `401`.** The token has probably expired (15-minute lifetime). Get a new one. If it still fails, introspect the token by hand as shown above, and check that `ISSUER_URL`, `CLIENT_ID` and `CLIENT_SECRET` were set when you applied the file.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-5-kong-identity).
 
 ## Tearing this step down
 
-Delete the `AuthZ_Server_1` authorization server in Konnect (**Identity**). Deleting the `kong-aws` control plane in [Clean up](README.md#clean-up) removes the plugin. Delete `a2a-oidc.yaml` from your working directory when you're done.
+Section 3 of [docs/teardown.md](docs/teardown.md) deletes the `AuthZ_Server_1` authorization server. Deleting the AI Gateway (section 1) removes the auth strategy.
 
-[← Step 4](4-mcp-gateway.md) · **Step 5** · [Step 6 →](6-konnect-ai-gateway.md)
+[← Step 4](4-mcp-gateway.md) · **Step 5** · [Step 6 →](6-llm-gateway-bedrock.md)

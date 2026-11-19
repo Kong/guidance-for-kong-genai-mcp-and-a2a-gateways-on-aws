@@ -2,44 +2,43 @@
 
 These are open issues to resolve before this guide is used in production. Back to the [README](../README.md).
 
-Steps 1 to 5 were run end to end in November 2026 with Kong Gateway `3.14.0.3`, Kong Operator `2.1.5`, AgentCore CLI `1.1.0`, `a2a-sdk` `1.3.1`, decK `1.70` and EKS `1.35`. The fixes from that run are in the step docs. What's left is below.
+Each step was run in November 2026 with Kong Operator `2.4.0`, the `kong/kong-ai-gateway:2.3.1` data plane, kongctl `1.28.4`, AgentCore CLI `1.1.0`, `a2a-sdk` `1.3.1` and EKS `1.35`. The fixes from that run are in the step docs. What's left is below.
 
-## Design
+## Not yet run from scratch
 
-1. **Kong can't sign requests to AgentCore with IAM.** The `ai-a2a-proxy` plugin in Kong 3.14 has only `max_request_body_size` and `logging.*` settings, with no upstream authentication. Step 3 therefore gives the AgentCore runtime JWT inbound auth that trusts Kong Identity, and Kong passes the caller's token through. The Konnect AI Gateway data plane (`kong/kong-ai-gateway` 2.3, Kong 3.15) does support this: its Agent entity signs AgentCore calls with SigV4 through Pod Identity, as Step 6 shows. Steps 3 to 5 could move to that design once the classic gateway image gains the same option, or be replaced by Step 6.
-2. **Step 3 deploys two runtimes.** The `agent` runtime (SigV4) serves the direct `awscurl` test and Step 6. The `agentjwt` runtime serves Steps 3 to 5. Both stay deployed until you remove them.
-3. **AgentCore checks only the token's `client_id`.** The runtime's authorizer sets `allowedClients`. Consider adding `allowedAudience` (`http://kong.dev`) or `allowedScopes` too.
+1. **The guide hasn't been run start to finish on a fresh account.** The AI Gateway setup was built on top of an earlier, plugin-based setup in the same cluster, then written up as this linear path. In particular, these weren't run exactly as written:
+   - installing Kong Operator `2.4.0` directly in Step 2 (it was upgraded from `2.1.5`);
+   - applying Steps 3 to 6 one file at a time (the same entities were applied together, in fewer passes);
+   - the teardown in [docs/teardown.md](teardown.md).
+
+   Have someone follow the README in a clean account before relying on it.
 
 ## Security and privacy
 
-4. **Possible AWS account ID in the docs.** Check sample outputs for 12-digit account numbers (for example inside URL-encoded runtime ARNs) and replace them with `<YOUR_AWS_ACCOUNT>`.
-5. **Kong checks tokens only from Step 5 on.** Between Steps 3 and 5, Kong forwards every `/a2a` call to AgentCore, which rejects calls without a valid token. In production, apply the Step 5 plugin before exposing the route. The A2A section also describes a Key Auth plugin that the config doesn't include.
-6. **Step 4's `/mcp` route has no authentication.** Step 4's MCP server is public. (Step 6's MCP server on the AI Gateway requires a Kong Identity token.) Protect it (for example with Kong's MCP OAuth2 plugin) before pointing it at real APIs.
-7. **The client secret is stored in the OpenID Connect plugin's config** in Konnect. Use a Konnect vault reference for production.
-8. **`log_payloads: true`** on the A2A route logs full request and response bodies.
-9. **The IAM policy is broad.** Only Step 6 uses it (AgentCore and Bedrock). `bedrock-policy` uses `"Resource": "*"` for every action, including `secretsmanager:ListSecrets` / `GetSecretValue`. Scope it to specific model, guardrail, runtime and secret ARNs. Also confirm `bedrock:CallWithBearerToken` is needed.
-10. **TLS policy.** The NLB uses `ELBSecurityPolicy-TLS-1-2-2017-01`. Consider a current TLS 1.3 policy. Port 80 is also open in plain HTTP.
+2. **`/a2a` and `/mcp` are open between Steps 3 and 5.** Until Step 5 adds the auth strategy, anyone who knows the URL can call the agent and the tools, and Kong signs the agent calls with its own IAM role. In production, attach the auth strategy before exposing anything.
+3. **The client secret is stored in the auth strategy's config** in Konnect. Use a Konnect vault reference for production.
+4. **`logging.payloads: true`** on the agent logs full request and response bodies.
+5. **The IAM policy is broad.** `bedrock-policy` uses `"Resource": "*"` for every action, including `secretsmanager:ListSecrets` / `GetSecretValue`. Scope it to the specific AgentCore runtime, Bedrock model, guardrail and secret ARNs. Also confirm `bedrock:CallWithBearerToken` is needed.
+6. **TLS.** The data plane's NLB uses the AWS default TLS policy, and port 80 is open in plain HTTP. The operator also adds port 8443 (Kong's own TLS proxy, with a self-signed certificate). Consider a TLS 1.3 policy and removing ports 80 and 8443.
+7. **Possible AWS account IDs in sample output.** Check sample outputs for 12-digit account numbers (for example inside runtime ARNs) and replace them with `<YOUR_AWS_ACCOUNT>`.
 
 ## Missing or incomplete content
 
-11. **`client_1.py` doesn't send a token.** Since `/a2a` needs a Kong Identity token, the second agent in Step 3 is rejected as written. It also uses the sample domain `kong-dp.kong-demo.com` over `http://`. Update it to read the domain and a token from the environment, then test it.
-12. **Architecture pieces with no deployment steps:** LLM Gateway → Bedrock (AI Proxy), Bedrock Guardrails (AI AWS Guardrails plugin), MemoryDB (semantic cache, routing and guards), Secrets Manager (vault), and Kong metrics to CloudWatch.
-13. **Two different agents.** `code/a2a/server_1.py` (deployed to AgentCore) adds header-logging and A2A-version-normalizing middleware that the inline code in Step 3 doesn't have. Its first line also prints the SDK version, which is debugging output.
-14. **Step 3 still starts with `deck gateway reset -f`.** Steps 4 and 5 add to the configuration with `deck gateway apply`, but re-running Step 3 deletes their routes and plugins until you re-apply them.
-15. **Kong doesn't trust `httpbin.konghq.com`'s certificate chain.** From a data plane that verifies upstream TLS, calls to it fail with `unable to get local issuer certificate`, while `curl` in the same cluster succeeds. Step 4 uses an in-cluster backend instead. The likely cause is Kong's CA bundle lacking the newer Let's Encrypt roots (`Root YE`, `ISRG Root X2`). Worth confirming with the Kong Gateway team, since real upstreams can use the same chain.
-
-16. **Step 6 is new.** Its teardown commands haven't been tested. Its AI Gateway data plane runs on Kong Operator 2.4.0 with an AI controller that the chart marks as off by default, and the Operator adds a port-8443 listener to the NLB (Kong's TLS proxy, not the admin API).
+8. **`client_1.py` isn't updated for the AI Gateway.** It uses the sample domain `kong-dp.kong-demo.com` over `http://`, and doesn't send a Kong Identity token, which `/a2a` needs after Step 5. Update it to read the domain and a token from the environment, then test it.
+9. **Model cost isn't configured.** The Overview's estimated cost stays at `$0.00` until the `nova-micro` model has cost settings.
+10. **Architecture pieces with no deployment steps:** Bedrock Guardrails, MemoryDB (semantic cache, routing and guards), Secrets Manager (vault), and Kong metrics to CloudWatch.
+11. **Two different agents.** `code/a2a/server_1.py` (deployed to AgentCore) adds header-logging and A2A-version-normalizing middleware that the inline code in Step 3 doesn't have. Its first line also prints the SDK version, which is debugging output.
+12. **Kong doesn't trust `httpbin.konghq.com`'s certificate chain.** From a data plane that verifies upstream TLS, calls to it fail with `unable to get local issuer certificate`, while `curl` in the same cluster succeeds. Step 4 uses an in-cluster backend instead. The likely cause is Kong's CA bundle lacking the newer Let's Encrypt roots (`Root YE`, `ISRG Root X2`). Worth confirming with the Kong Gateway team, since real upstreams can use the same chain.
 
 ## Commands that may trip readers up
 
-17. [docs/teardown.md](teardown.md) has commands for removing everything, but they haven't been run end to end yet.
-18. `agentcore remove all -y` is followed by `agentcore deploy`. Confirm this is the intended teardown, now that the project has two runtimes.
-19. The Python setup uses `--python 3.13`, while `agentcore.json` sets `"runtimeVersion": "PYTHON_3_14"`.
-20. **decK wrappers.** Some company setups wrap `deck` and refuse `--konnect-token`, taking the token from a pinned profile instead. If so, drop the flag and point the profile at the Konnect organization that holds `kong-aws`.
+13. **The operator's AI data plane controller is off by default**, and the data plane's container must be named `aigw`. Both are handled in Step 2, but if either is missed, the failure is silent or the error message is unclear.
+14. **Steps 5 and 6 re-declare entities.** Step 5's file re-declares the Step 3 agent and Step 4 MCP server to add their `access` block, and Step 6's re-declares the Step 5 auth strategy so the model can reference it. Re-running an earlier step's file after Step 5 (for example Step 3's) removes the `access` block again and reopens that route.
+15. **kongctl wrappers.** Some company setups wrap kongctl and refuse `--pat`, taking the token from a pinned profile instead. If so, drop the flag and point the profile at the Konnect organization that holds `kong-aws-ai`.
+16. The Python setup uses `--python 3.13`, while `agentcore.json` sets `"runtimeVersion": "PYTHON_3_14"`.
 
 ## Accuracy and housekeeping
 
-21. **Version drift:** the DataPlane uses `kong/kong-gateway:3.14.0.3`, but the sample response in Step 2 shows `Server: kong/3.14.0.0-enterprise-edition`.
-22. **Typos:** "learn mode", "avaiable", "polcies", "existsing", "Speach", "the the", "At the sames".
-23. The scratch notes in the Step 3 appendix should be removed or turned into real content.
-24. `.DS_Store` files are tracked in `images/`. Remove them and add a `.gitignore`.
+17. **Typos:** "learn mode", "avaiable", "polcies", "existsing", "Speach", "the the".
+18. `.DS_Store` files are tracked in `images/`. Remove them and add a `.gitignore`.
+19. **Diagrams.** The flow diagrams in `images/` show plugins (A2A Proxy, MCP Proxy, Key Auth) from the plugin-based design, not the AI Gateway's Agent, MCP Server and Auth Strategy entities.

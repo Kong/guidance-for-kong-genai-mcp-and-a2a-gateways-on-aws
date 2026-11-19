@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Verifies the finished walkthrough end to end: A2A (/a2a) and MCP (/mcp) through Kong.
+# Verifies the finished walkthrough end to end on the AI Gateway: the agent (/a2a),
+# the MCP server (/mcp) and the Bedrock model (/v1), with and without a Kong Identity token.
 #
-# Needs these exported in your shell (the values from Steps 1 and 3):
+# Needs these exported in your shell (the values from Steps 1 and 5):
 #   AWS_DOMAIN, ISSUER_URL, CLIENT_ID, CLIENT_SECRET
 # Optional:
-#   KONG_HOST  the gateway to test (default kong-dp.$AWS_DOMAIN; use ai-dp.$AWS_DOMAIN for Step 6).
+#   KONG_HOST  the gateway to test (default ai-dp.$AWS_DOMAIN).
 #   KONG_IP    pins KONG_HOST to one address, if your local DNS can't resolve it yet.
-#   MODEL      also test an LLM route, e.g. MODEL=nova-micro for Step 6's Bedrock model.
-#   MCP_AUTH   set to 1 when /mcp requires a token (Step 6), to also check it rejects calls without one.
+#   MODEL      the model name to test (default nova-micro). Set MODEL= to skip the model checks.
+#   MCP_AUTH   set MCP_AUTH=0 if /mcp doesn't require a token (before Step 5).
 #
 # Usage:  ./scripts/verify.sh
-#         KONG_HOST=ai-dp.$AWS_DOMAIN MODEL=nova-micro MCP_AUTH=1 ./scripts/verify.sh
 # Exit code is 0 only if every check passes.
 
 for tool in curl jq; do
@@ -20,7 +20,9 @@ for v in AWS_DOMAIN ISSUER_URL CLIENT_ID CLIENT_SECRET; do
   if [ -z "${!v:-}" ]; then echo "Missing $v (export it first)"; exit 2; fi
 done
 
-HOST="${KONG_HOST:-kong-dp.${AWS_DOMAIN}}"
+HOST="${KONG_HOST:-ai-dp.${AWS_DOMAIN}}"
+MODEL="${MODEL-nova-micro}"
+MCP_AUTH="${MCP_AUTH:-1}"
 pass=0
 fail=0
 
@@ -140,13 +142,13 @@ check "gateway answers (404 on /, no route there)" t_gateway_up
 check "/a2a without a token is rejected by Kong" t_a2a_no_token
 check "/a2a with a bad token is rejected by Kong" t_a2a_bad_token
 check "/a2a with a valid token reaches the agent" t_a2a_good_token
-if [ -n "${MCP_AUTH:-}" ]; then
+if [ "$MCP_AUTH" != "0" ]; then
   check "/mcp without a token is rejected" t_mcp_no_token
 fi
 check "/mcp initialize returns server info" t_mcp_initialize
 check "/mcp lists check-inventory and list-orders" t_mcp_list
 check "/mcp tool call reaches the REST backend" t_mcp_call
-if [ -n "${MODEL:-}" ]; then
+if [ -n "$MODEL" ]; then
   check "/v1 model ${MODEL} without a token is rejected" t_model_no_token
   check "/v1 model ${MODEL} with a valid token answers" t_model_good_token
 fi

@@ -97,7 +97,7 @@ Before deploying, ensure you have an active Kong Konnect account. If you do not 
 
 ### Prerequisite CLI Tools
 For the deployment, ensure you have the following command line utilities installed:
-- [**Kong decK**](https://developer.konghq.com/deck/) CLI
+- [**kongctl**](https://developer.konghq.com/kongctl/) CLI
 - [**AWS CLI**](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html)
 - [eksctl](https://github.com/eksctl-io/eksctl)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl)
@@ -110,8 +110,11 @@ For the deployment, ensure you have the following command line utilities install
 
 ### Deployment Steps
 1. [AWS and EKS](../1-eks-cluster.md)
-1. [Konnect Control Plane and Data Plane](../2-kong-konnect-data-plane.md)
-1. [Kong Identity](../5-kong-identity-oauth2.md)
+1. [Kong AI Gateway on EKS, managed from Konnect](../2-kong-konnect-data-plane.md)
+1. [AgentCore agent behind the AI Gateway](../3-a2a-agent-gateway-agentcore.md)
+1. [MCP tools on the AI Gateway](../4-mcp-gateway.md)
+1. [Kong Identity tokens on the agent and tools](../5-kong-identity-oauth2.md)
+1. [LLM Gateway to Amazon Bedrock](../6-llm-gateway-bedrock.md)
 
 
 

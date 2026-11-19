@@ -1,4 +1,4 @@
-# Step 4: Turn a REST API into MCP tools with Kong's MCP Gateway
+# Step 4: Turn a REST API into MCP tools on the AI Gateway
 
 [← Step 3](3-a2a-agent-gateway-agentcore.md) · **Step 4** · [Step 5 →](5-kong-identity-oauth2.md)
 
@@ -6,25 +6,22 @@
 
 Agents get useful when they can call tools. The **Model Context Protocol (MCP)** is the common way to describe and call those tools. If every agent connects straight to every MCP server, you get a mesh of credentials and no single place to see or limit tool usage. That mesh is hard to audit.
 
-The MCP Gateway pattern puts Kong between agents and tools. Agents talk MCP to Kong. Kong forwards to MCP servers, or turns ordinary REST APIs into MCP tools, and applies the same authentication, rate limiting and telemetry it applies to LLM and A2A traffic. Most companies already have plenty of REST APIs, so turning them into MCP tools without writing an MCP server is often the quickest win.
+The MCP Gateway pattern puts Kong between agents and tools. Agents talk MCP to Kong. Kong forwards to MCP servers, or turns ordinary REST APIs into MCP tools, and applies the same authentication, rate limiting and telemetry it applies to model and agent traffic. Most companies already have plenty of REST APIs, so turning them into MCP tools without writing an MCP server is often the quickest win.
 
 ## What it does, in plain English
 
-1. **Explains** the MCP flow: agents in AgentCore, MCP servers and tools, Kong's **AI MCP Proxy** plugin, and the governance around them.
-2. **Publishes an MCP server on Kong** at `https://kong-dp.<your domain>/mcp`. Kong's **AI MCP Proxy** plugin, in `conversion-listener` mode, turns two REST endpoints into two MCP tools: `check-inventory` and `list-orders`.
-3. **Calls it like an MCP client would.** You initialize a session, list the tools and call one.
+1. **Explains** the MCP flow: agents in AgentCore, MCP servers and tools, and the governance around them.
+2. **Runs a small echo API in the cluster** ([go-httpbin](https://github.com/mccutchen/go-httpbin)). It returns whatever request it receives, so you can see exactly what Kong sent when an agent called a tool.
+3. **Declares an MCP Server on the AI Gateway** at `https://ai-dp.<your domain>/mcp`. In `conversion-listener` mode it turns two REST endpoints into two MCP tools: `check-inventory` and `list-orders`.
+4. **Calls it like an MCP client would.** You initialize a session, list the tools and call one.
 
-The REST API behind the tools is a small echo service ([go-httpbin](https://github.com/mccutchen/go-httpbin)) that you run inside the cluster. It returns whatever request it receives, so you can see exactly what Kong sent when an agent called a tool. It runs in-cluster rather than on the public internet because a Kong data plane that enforces upstream TLS verification can't always verify public test services (see [Common problems](#common-problems)).
-
-This step **adds** to Kong's configuration with `deck gateway apply`, which creates or updates entities without deleting anything. Step 3's `/a2a` route keeps working.
+Until Step 5 adds a token check, `/mcp` accepts calls from anyone who knows the URL. The tools only reach the echo API, so nothing sensitive is exposed.
 
 ## Before you start
 
 - Steps 2 and 3 are complete. `PAT` and `AWS_DOMAIN` are exported, and `kubectl` points at the `kong314` cluster.
-- decK is installed and has the `deck gateway apply` command (`deck gateway apply --help` shows its usage).
-- The data plane image from Step 2 (`kong/kong-gateway:3.14.0.3`) meets the plugin's minimum version (Kong Gateway 3.12).
 
-> **Tested.** This step was run end to end against Kong Gateway `3.14.0.3` on the guide's EKS and Konnect setup.
+> **Tested.** This step was run end to end against the `kong/kong-ai-gateway:2.3.1` data plane with kongctl `1.28.4`.
 
 ---
 
@@ -90,9 +87,9 @@ MCP Tools
 
 The gateway can directly expose MCP tools itself, allowing Kong to behave as an MCP-native gateway endpoint.
 
-AI MCP Proxy Plugin
+MCP Server entity
 
-This plugin is the core intelligence layer inside Kong. It:
+On the AI Gateway, each MCP server is declared as an **MCP Server** entity, the core of the MCP gateway. It:
 
 * translates and proxies MCP requests,
 * brokers communication between agents and services,
@@ -127,7 +124,7 @@ At the top, administrators manage the platform through the Konnect Control Plane
 This control plane:
 
 * configures routes,
-* manages plugins,
+* manages AI entities and policies,
 * distributes policies,
 * and controls the Kong data plane nodes.
 
@@ -135,7 +132,7 @@ Observability Stack
 
 On the right side:
 
-* the OpenTelemetry stack receives telemetry exported through the OTel Plugin.
+* the OpenTelemetry stack receives telemetry exported by the gateway.
 * This enables distributed tracing, metrics, and logging for AI and MCP traffic.
 
 Konnect Metering & Billing
@@ -147,9 +144,9 @@ Usage information is exported for:
 * cost visibility,
 * and AI consumption analytics.
 
-AI Rate Limiting Plugin
+AI Rate Limiting
 
-The gateway also includes an AI-focused rate limiting plugin that protects:
+The gateway can also apply AI-focused rate limiting policies that protect:
 
 * LLM endpoints,
 * MCP tools,
@@ -194,7 +191,8 @@ The overall architecture enables:
 
 It effectively turns Kong into an AI-native control and data plane for MCP ecosystems.
 
-## Publish an MCP server on Kong
+
+## Publish an MCP server on the AI Gateway
 
 ### Run the echo backend in the cluster
 
@@ -208,117 +206,63 @@ kubectl -n kong rollout status deployment/httpbin --timeout=120s
 
 You want `successfully rolled out`. If the image pull hits a Docker Hub rate limit, use `ghcr.io/mccutchen/go-httpbin` as the image.
 
-### Write the decK file
+It runs in the cluster rather than on the public internet because a gateway that verifies upstream TLS can't always verify public test services (see [Common problems](#common-problems)).
 
-This file defines three things:
+### Declare the MCP server
 
-- a **service**, `mcp-echo-api`, pointing at `http://httpbin.kong.svc.cluster.local:8080/anything` (the REST API behind the tools),
-- a **route**, `mcp-route`, that answers on `/mcp` (the MCP endpoint agents connect to),
-- the **`ai-mcp-proxy`** plugin in `conversion-listener` mode. Each entry under `tools` becomes one MCP tool: its description tells the agent what it does, and its `method`, `path` and `parameters` tell Kong which REST call to make.
+[`code/ai-gateway/step4-mcp.yaml`](code/ai-gateway/step4-mcp.yaml) declares one **MCP Server** on `kong-aws-ai`:
 
-The tool paths start with `/mcp/` because they must match the route's path. `strip_path: true` removes `/mcp` before Kong calls the upstream, so `check-inventory` becomes `GET http://httpbin.kong.svc.cluster.local:8080/anything/inventory?sku=...`.
+- type `conversion-listener`: Kong converts REST operations into MCP tools and serves them itself;
+- `config.url` is the REST API behind the tools, `http://httpbin.kong.svc.cluster.local:8080/anything`;
+- `config.route.paths` publishes it at `/mcp`, the endpoint agents connect to;
+- each entry under `tools` becomes one MCP tool: its description tells the agent what it does, and its `method`, `path` and `parameters` tell Kong which REST call to make.
 
-```bash
-cat > ai-mcp-proxy.yaml << 'EOF'
-_format_version: "3.0"
-services:
-- name: mcp-echo-api
-  url: http://httpbin.kong.svc.cluster.local:8080/anything
-  routes:
-  - name: mcp-route
-    paths:
-    - /mcp
-    strip_path: true
-    protocols:
-    - http
-    - https
-    plugins:
-    - name: ai-mcp-proxy
-      instance_name: ai-mcp-proxy1
-      config:
-        mode: conversion-listener
-        server:
-          timeout: 60000
-        tools:
-        - name: check-inventory
-          description: Check how many units of a product are in stock, by SKU.
-          method: GET
-          path: /mcp/inventory
-          annotations:
-            title: Check inventory
-            read_only_hint: true
-          parameters:
-          - name: sku
-            in: query
-            required: true
-            description: The product SKU to look up.
-            schema:
-              type: string
-        - name: list-orders
-          description: List recent orders, optionally filtered by status.
-          method: GET
-          path: /mcp/orders
-          annotations:
-            title: List orders
-            read_only_hint: true
-          parameters:
-          - name: status
-            in: query
-            required: false
-            description: Only return orders with this status, for example shipped.
-            schema:
-              type: string
-EOF
-```
-
-### Apply it to the control plane
-
-`deck gateway apply` adds these entities to `kong-aws` and leaves everything else (including Step 3's A2A route) in place. Konnect then pushes the change to your data plane on EKS.
+The tool paths start with `/mcp/` because they include the route's path. Kong strips `/mcp` before calling the upstream, so `check-inventory` becomes `GET http://httpbin.kong.svc.cluster.local:8080/anything/inventory?sku=...`.
 
 ```bash
-deck gateway apply --konnect-control-plane-name kong-aws --konnect-token $PAT ai-mcp-proxy.yaml
+kongctl diff --mode apply -f code/ai-gateway/step4-mcp.yaml --pat "$PAT"
+kongctl apply -f code/ai-gateway/step4-mcp.yaml --auto-approve --pat "$PAT"
 ```
+
+The preview shows one `ai_gateway_mcp_server` to create, and nothing changed on the Step 3 agent. In Konnect it appears under **AI Gateway → MCP Servers**.
 
 ## Call the MCP server
 
-MCP clients talk JSON-RPC over HTTP. A client first **initializes** a session, then **lists** the tools, then **calls** one. The commands below do the same thing with `curl`, so you can see each message. Responses can come back as plain JSON or as a short `text/event-stream` message (lines starting with `event:` and `data:`); both are normal.
+MCP clients talk JSON-RPC over HTTP. A client first **initializes** a session, then **lists** the tools, then **calls** one. The commands below do the same thing with `curl`, so you can see each message. Responses come back as a short `text/event-stream` message (lines starting with `event:` and `data:`). The JSON-RPC message is on the `data:` line.
 
 ### 1. Initialize a session
 
-This saves the response headers to `mcp-headers.txt`, because the server may return an `Mcp-Session-Id` header that later requests must send back.
+This saves the response headers to `mcp-headers.txt`, because the server returns an `Mcp-Session-Id` header that later requests must send back.
 
 ```bash
-curl -s -D mcp-headers.txt -X POST https://kong-dp.$AWS_DOMAIN/mcp \
+curl -s -D mcp-headers.txt -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}'
-```
-
-```bash
 export MCP_SESSION_ID=$(grep -i '^mcp-session-id:' mcp-headers.txt | awk '{print $2}' | tr -d '\r')
 echo "Session: $MCP_SESSION_ID"
 ```
 
-You should get a JSON-RPC `result` with `serverInfo` and `capabilities`. If `Session:` prints nothing, the server didn't issue a session ID. Run the next commands as they are; if they're rejected, see Common problems below.
+The result includes `"serverInfo":{"name":"Kong AI Gateway",...}`, and `Session:` prints an ID.
 
 ### 2. List the tools
 
 ```bash
-curl -s -X POST https://kong-dp.$AWS_DOMAIN/mcp \
+curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $MCP_SESSION_ID" \
   --data '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
 
-The result lists `check-inventory` and `list-orders`, each with its description and an `inputSchema` built from the `parameters` in the decK file. This is exactly what an agent sees when it asks Kong which tools exist.
+The result lists `check-inventory` and `list-orders`, each with its description and an `inputSchema` built from the `parameters` in the YAML file. This is exactly what an agent sees when it asks Kong which tools exist.
 
 Look at the argument names in each `inputSchema`: Kong prefixes every parameter with where it goes in the REST call, so `sku` (a query parameter) becomes **`query_sku`** and `status` becomes **`query_status`**. Tool calls must use those names.
 
 ### 3. Call a tool
 
 ```bash
-curl -s -X POST https://kong-dp.$AWS_DOMAIN/mcp \
+curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $MCP_SESSION_ID" \
@@ -330,7 +274,7 @@ The result's `content` holds httpbin's echo of the REST call Kong made, with `"i
 Try the second tool too:
 
 ```bash
-curl -s -X POST https://kong-dp.$AWS_DOMAIN/mcp \
+curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $MCP_SESSION_ID" \
@@ -339,26 +283,24 @@ curl -s -X POST https://kong-dp.$AWS_DOMAIN/mcp \
 
 ## Point a real agent at it
 
-Any MCP client that supports the **Streamable HTTP** transport can use `https://kong-dp.<your domain>/mcp` as its server URL, including agents built with the Strands SDK on AgentCore. To swap the echo API for a real one, change the service `url` and the `tools` list, then run `deck gateway apply` again.
+Any MCP client that supports the **Streamable HTTP** transport can use `https://ai-dp.<your domain>/mcp` as its server URL, including agents built with the Strands SDK on AgentCore. After Step 5 it also needs a Kong Identity token. To swap the echo API for a real one, change `config.url` and the `tools` list, then run `kongctl apply` again.
 
 ---
 
 ## Verify
 
-The `tools/list` call returns `check-inventory` and `list-orders`, and the `tools/call` call returns httpbin's echo showing `/anything/inventory?sku=KONG-123`. Step 3's `/a2a` route still answers, because `deck gateway apply` didn't remove it.
+The `tools/list` call returns `check-inventory` and `list-orders`, and the `tools/call` call returns httpbin's echo showing `/anything/inventory?sku=KONG-123`. Step 3's `/a2a` still answers.
 
 ## Common problems
 
-- **`deck gateway apply` isn't a known command.** Your decK is too old. Upgrade decK and check with `deck gateway apply --help`.
-- **`deck gateway ...` fails with an authentication error.** `PAT` isn't exported, or it has expired. Generate a new one in Konnect as described in Step 2.
-- **`/mcp` returns 404 "no Route matched".** The configuration hasn't reached the data plane yet, or the apply failed. Re-run the apply command and check its output.
 - **`tools/list` or `tools/call` returns an error about the session.** Re-run the initialize command and the `export MCP_SESSION_ID=...` command, then try again.
 - **`tools/call` returns `Additional properties are not allowed ('sku' was unexpected)`.** Use the argument names from `tools/list`: `query_sku` and `query_status`.
-- **`tools/call` returns `HTTP call failed with status 502`.** Kong couldn't reach the backend or verify its certificate. The data plane log names the cause. For example, pointing the service at the public `https://httpbin.konghq.com` fails with `upstream SSL certificate verify error: (20:unable to get local issuer certificate)` on a data plane that verifies upstream TLS, even though `curl` from a pod in the same cluster gets a `200`. That site uses a newer Let's Encrypt chain (`YE2`, `Root YE`, `ISRG Root X2`), most likely one Kong's CA store doesn't trust. Use the in-cluster backend.
-- **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-4-mcp-gateway).
+- **`tools/call` returns `HTTP call failed with status 502`.** Kong couldn't reach the backend or verify its certificate. The data plane log names the cause (`kubectl logs -n kong deploy/kong-aws-ai-dp --since=5m`). Check that the `httpbin` deployment is running. With the public `https://httpbin.konghq.com`, a Kong data plane that verifies upstream TLS fails with `unable to get local issuer certificate`, which is why this step uses an in-cluster backend.
+- **`/mcp` returns 404 "no Route matched".** The MCP server hasn't reached the data plane yet, or `kongctl apply` failed. Check the apply output.
+- **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-4-mcp-tools).
 
 ## Tearing this step down
 
-Remove the echo backend with `kubectl -n kong delete service,deployment httpbin`. Deleting the `kong-aws` control plane in [Clean up](README.md#clean-up) removes this route too. Delete `ai-mcp-proxy.yaml` and `mcp-headers.txt` from your working directory when you're done.
+Remove the echo backend with `kubectl -n kong delete service,deployment httpbin`. Deleting the AI Gateway ([docs/teardown.md](docs/teardown.md), section 1) removes the MCP server. Delete `mcp-headers.txt` from your working directory when you're done.
 
 [← Step 3](3-a2a-agent-gateway-agentcore.md) · **Step 4** · [Step 5 →](5-kong-identity-oauth2.md)

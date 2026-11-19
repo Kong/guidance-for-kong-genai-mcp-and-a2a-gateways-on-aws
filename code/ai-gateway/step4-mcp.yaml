@@ -1,0 +1,38 @@
+# Step 4: turn the in-cluster echo API into two MCP tools.
+ai_gateway_mcp_servers:
+  - ref: inventory-tools
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: inventory-tools
+    display_name: Inventory and Orders Tools
+    type: conversion-listener
+    enabled: true
+    config:
+      url: http://httpbin.kong.svc.cluster.local:8080/anything
+      route:
+        paths:
+          - /mcp
+      server:
+        timeout: 60000
+    tools:
+      - name: check-inventory
+        description: Check how many units of a product are in stock, by SKU.
+        method: GET
+        path: /mcp/inventory
+        parameters:
+          - name: sku
+            in: query
+            required: true
+            description: The product SKU to look up.
+            schema:
+              type: string
+      - name: list-orders
+        description: List recent orders, optionally filtered by status.
+        method: GET
+        path: /mcp/orders
+        parameters:
+          - name: status
+            in: query
+            required: false
+            description: Only return orders with this status, for example shipped.
+            schema:
+              type: string

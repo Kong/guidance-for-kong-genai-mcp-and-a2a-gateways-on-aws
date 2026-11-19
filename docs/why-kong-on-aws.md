@@ -40,7 +40,7 @@ API Gateway throttles by *requests* per second. Bedrock's cost allocation tags t
 Bedrock Guardrails can protect non-Bedrock models through the ApplyGuardrail API, but each application has to call it. Kong's **AI AWS Guardrails** plugin calls your existing Bedrock guardrail from the gateway on requests and responses, so every route that uses it is covered without app changes. Your guardrail definitions stay in Bedrock.
 
 **5. Semantic caching and prompt-level controls.**
-Kong's **AI Semantic Cache** plugin returns a cached response when a new prompt *means* the same thing as an earlier one, using Redis as the vector store. That's different from Bedrock's model-level prompt caching, which reuses a repeated prompt prefix inside one model call. Kong also has prompt guard, prompt template and prompt decorator plugins (described in [Step 3](../3-a2a-agent-gateway-agentcore.md#kong-ai-gateway-plugins)).
+Kong's **AI Semantic Cache** plugin returns a cached response when a new prompt *means* the same thing as an earlier one, using Redis as the vector store. That's different from Bedrock's model-level prompt caching, which reuses a repeated prompt prefix inside one model call. Kong also has prompt guard, prompt template and prompt decorator plugins (see [Kong AI Gateway](https://developer.konghq.com/ai-gateway/)).
 
 **6. One identity layer for the humans, apps and agents calling you.**
 IAM governs what *Kong* may do in AWS. Separately, you need to know *who is calling Kong*. Kong applies key auth, OAuth2 or OpenID Connect at the gateway, with Kong Identity (Step 5), Amazon Cognito or another provider as the issuer, and maps callers to consumers and consumer groups that limits and analytics use.
@@ -60,13 +60,13 @@ Kong adds to your AWS footprint. It doesn't route around it. Here is what this r
 | AWS service | How this guide uses it | Where |
 |---|---|---|
 | **Amazon EKS** | Runs the Kong data plane as pods, managed by the Kong Operator. | Steps 1–2 |
-| **EKS Pod Identity + IAM** | The only way Kong gets AWS permissions. The `bedrock-policy` lists exactly which Bedrock, AgentCore and Secrets Manager actions Kong may call. Step 6's AI Gateway uses it for AgentCore and Bedrock. | Steps 2, 6 |
+| **EKS Pod Identity + IAM** | The only way Kong gets AWS permissions. The `bedrock-policy` lists exactly which Bedrock, AgentCore and Secrets Manager actions Kong may call. The AI Gateway uses it to sign calls to AgentCore and Bedrock. | Steps 2, 3, 6 |
 | **Network Load Balancer** | Created by the AWS Load Balancer Controller as Kong's public entry point. | Steps 1–2 |
 | **AWS Certificate Manager** | Wildcard certificate on the NLB's 443 listener, issued and renewed by AWS. | Steps 1–2 |
-| **Route 53** | Domain registration, DNS validation for ACM, and the `kong-dp.<domain>` alias to the NLB. | Steps 1–2 |
-| **Bedrock AgentCore** | Hosts the A2A agent. Its JWT inbound auth trusts Kong Identity tokens, which Kong also checks, so callers don't need AWS credentials. | Steps 3, 5 |
+| **Route 53** | Domain registration, DNS validation for ACM, and the `ai-dp.<domain>` alias to the NLB. | Steps 1–2 |
+| **Bedrock AgentCore** | Hosts the A2A agent. Kong signs each call to it with its IAM role, after checking the caller's Kong Identity token, so callers don't need AWS credentials. | Steps 3, 5 |
 | **CloudWatch** | AgentCore runtime logs (`aws logs tail`). | Step 3 |
-| **Amazon Bedrock + Guardrails** | IAM permissions are granted (`bedrock:InvokeModel`, `bedrock:ApplyGuardrail`). Shown in the reference architecture, but no route is configured yet. | Step 2 (permissions only) |
+| **Amazon Bedrock + Guardrails** | Step 6 routes OpenAI-style requests to Amazon Nova Micro, signed with Kong's IAM role. Guardrails permissions are granted (`bedrock:ApplyGuardrail`) but no guardrail is configured yet. | Step 6 |
 | **Secrets Manager** | IAM permissions are granted (`secretsmanager:GetSecretValue`). The reference architecture stores provider credentials and certificates here. | Step 2 (permissions only) |
 | **MemoryDB for Redis** | In the reference architecture, the backend for semantic caching, semantic routing and semantic guards. Not deployed by this guide. | Architecture only |
 
@@ -78,7 +78,7 @@ The [who-owns-what](#who-owns-what) table below splits these responsibilities be
 |---|---|---|
 | EKS control plane | Konnect control plane (SaaS) | EKS worker nodes and upgrades |
 | Network Load Balancer | Kong Identity (OAuth2 server) | Scope of the IAM policy |
-| ACM certificate issuance and renewal | Konnect analytics | Kong routes, plugins and decK files |
+| ACM certificate issuance and renewal | Konnect analytics | Kong AI Gateway entities and kongctl files |
 | Route 53 DNS service | Kong Gateway and Operator releases | Konnect PAT and client secrets |
 | Bedrock models | | Agent code (`server_1.py`, …) |
 | Bedrock Guardrails service | | Domain and DNS records |

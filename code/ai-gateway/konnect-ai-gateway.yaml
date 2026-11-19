@@ -1,4 +1,4 @@
-# The AI Gateway control plane in Konnect. Uses the Konnect login object from Step 2.
+# The AI Gateway control plane in Konnect. Uses the Konnect login object (konnect-api-auth-conf).
 apiVersion: konnect.konghq.com/v1alpha1
 kind: KonnectAIGateway
 metadata:
