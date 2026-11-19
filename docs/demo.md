@@ -39,7 +39,7 @@ ROUNDS=30 ./scripts/traffic.sh
 
 Each round sends accepted (valid token) and rejected (no token, bad token) calls to the agent, the MCP server and the model, and prints the status codes, for example `a2a: 200 401 401  mcp: 200 401  model: 200 401`. Each model call costs a fraction of a cent. Set `MODEL=` to leave the model out.
 
-Give Konnect a few minutes. The AI Gateway's **Overview** then shows the model usage: total requests, average LLM latency and token usage. Agent and MCP analytics are under **Observability**.
+Give Konnect a few minutes. The AI Gateway's **Overview** then shows the model usage: total requests, average LLM latency and token usage. **Observability → Overview** adds the exact cost, error rate and top consumers, including MCP server calls. See the screenshots in [Step 6](../6-llm-gateway-bedrock.md#see-model-usage-in-konnect).
 
 ## 3. A five-minute walk-through
 

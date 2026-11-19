@@ -4,7 +4,7 @@ These are the diagrams used by the [README](../README.md), the step docs and the
 
 ## Conventions
 
-- **`architecture/`** holds diagrams that aren't tied to one step. Each **`step<N>-<topic>/`** folder holds diagrams for one step, where `<N>` matches the step number.
+- **`architecture/`** holds diagrams that aren't tied to one step. Each **`step<N>-<topic>/`** folder holds diagrams and screenshots for one step, where `<N>` matches the step number.
 - **Numeric prefixes** (`01-`, `02-`, …) set the order.
 - **Lowercase kebab-case**, no spaces.
 - Every image has **alt text** describing what it shows, followed by a one-line *italic caption*.
@@ -22,3 +22,9 @@ These are the diagrams used by the [README](../README.md), the step docs and the
 | `architecture/11-life-of-a-request.svg` | Numbered path of one request, from client to AgentCore and back | README |
 | `step3-a2a/01-a2a-flow.png` | A2A flow through Kong's Agent Gateway | [Step 3](../3-a2a-agent-gateway-agentcore.md) |
 | `step4-mcp/01-mcp-flow.png` | MCP flow through Kong's MCP Gateway | [Step 4](../4-mcp-gateway.md) |
+| `step3-a2a/02-konnect-agents.png` | Screenshot: the AgentCore agent on the AI Gateway's Agents page in Konnect | [Step 3](../3-a2a-agent-gateway-agentcore.md) |
+| `step4-mcp/02-konnect-mcp-servers.png` | Screenshot: the MCP server on the AI Gateway's MCP servers page in Konnect | [Step 4](../4-mcp-gateway.md) |
+| `step6-llm/01-konnect-gateway-overview.png` | Screenshot: the AI Gateway's Overview with model usage | [Step 6](../6-llm-gateway-bedrock.md) |
+| `step6-llm/02-konnect-observability.png` | Screenshot: Observability → Overview with model cost, top consumers and MCP calls | [Step 6](../6-llm-gateway-bedrock.md) |
+
+Screenshots have account-specific values (gateway ID, Admin API URL, client ID) blanked out.

@@ -25,7 +25,7 @@ Each step was run in November 2026 with Kong Operator `2.4.0`, the `kong/kong-ai
 ## Missing or incomplete content
 
 8. **`client_1.py` isn't updated for the AI Gateway.** It uses the sample domain `kong-dp.kong-demo.com` over `http://`, and doesn't send a Kong Identity token, which `/a2a` needs after Step 5. Update it to read the domain and a token from the environment, then test it.
-9. **Model cost isn't configured.** The Overview's estimated cost stays at `$0.00` until the `nova-micro` model has cost settings.
+9. **Cost on the gateway's Overview rounds to the cent.** With small test volumes it shows `$0.00`. **Observability → Overview** shows the exact figure (for example `$0.0002835` for about 2,100 Nova Micro tokens).
 10. **Architecture pieces with no deployment steps:** Bedrock Guardrails, MemoryDB (semantic cache, routing and guards), Secrets Manager (vault), and Kong metrics to CloudWatch.
 11. **Two different agents.** `code/a2a/server_1.py` (deployed to AgentCore) adds header-logging and A2A-version-normalizing middleware that the inline code in Step 3 doesn't have. Its first line also prints the SDK version, which is debugging output.
 12. **Kong doesn't trust `httpbin.konghq.com`'s certificate chain.** From a data plane that verifies upstream TLS, calls to it fail with `unable to get local issuer certificate`, while `curl` in the same cluster succeeds. Step 4 uses an in-cluster backend instead. The likely cause is Kong's CA bundle lacking the newer Let's Encrypt roots (`Root YE`, `ISRG Root X2`). Worth confirming with the Kong Gateway team, since real upstreams can use the same chain.

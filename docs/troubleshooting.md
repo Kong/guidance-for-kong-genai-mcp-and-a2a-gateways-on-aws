@@ -199,4 +199,4 @@ Step 6's file re-declares the Step 5 auth strategy, so the model can reference i
 
 ### The AI Gateway's Overview tiles stay at 0
 
-Analytics take a few minutes to appear, and the Overview's Usage tiles count model calls only. Send some traffic to `/v1` (for example with `scripts/traffic.sh`), wait a few minutes and refresh.
+Analytics take a few minutes to appear, and the Overview's Usage tiles count model calls only. Send some traffic to `/v1` (for example with `scripts/traffic.sh`), wait a few minutes and refresh. If only **Estimated cost** stays at `$0.00`, that's rounding. **Observability → Overview** shows the exact cost.

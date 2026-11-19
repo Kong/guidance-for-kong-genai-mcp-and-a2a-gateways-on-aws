@@ -104,16 +104,22 @@ Send a few minutes of traffic. [`scripts/traffic.sh`](scripts/traffic.sh) makes 
 ROUNDS=20 ./scripts/traffic.sh
 ```
 
-Then open **AI Gateway → Gateways → Kong AWS AI Gateway**. After a few minutes the **Usage** tiles on the Overview fill in from the model calls:
+Then open **AI Gateway → Gateways → Kong AWS AI Gateway**. After a few minutes the **Usage** tiles on its Overview fill in from the model calls:
+
+![Konnect AI Gateway overview for Kong AWS AI Gateway: Usage tiles show 19 total requests, 812 ms average LLM latency, 2.1K tokens and $0.00 estimated cost, above a Total requests bar chart with all requests on one day](images/step6-llm/01-konnect-gateway-overview.png)
+*The gateway's Overview after some model traffic.*
 
 | Tile | What it shows |
 |---|---|
 | **Total requests** | Model requests in the last 7 days. Agent and MCP calls aren't counted here |
 | **Average LLM latency** | Time Bedrock took to answer, on average |
 | **Token usage** | Prompt and completion tokens across all model calls |
-| **Estimated cost** | Stays at `$0.00` unless the model has cost settings. A few thousand Nova Micro tokens also cost well under a cent |
+| **Estimated cost** | Rounded to the cent. A few thousand Nova Micro tokens cost a fraction of a cent, so it shows `$0.00` |
 
-The **Total requests** chart shows the same requests by day. Agent and MCP request analytics are under **Observability**.
+For the full picture, open **Observability → Overview**. It shows the exact cost, p95 latency and error rate, and the top consumers: which models, providers and Kong Identity clients made the calls, and how many calls each MCP server handled:
+
+![Konnect Observability dashboard: key metrics show 19 requests, 1,382 ms p95 LLM latency, 2,128 tokens, 0 cached tokens, 0% error rate and $0.0002835 cost; top consumers show Amazon Nova Micro with 19 requests, provider bedrock with 19, one client with 19 and the Inventory and Orders Tools MCP server with 53 calls](images/step6-llm/02-konnect-observability.png)
+*Observability → Overview: model usage and cost, plus MCP server calls. The client ID is blanked out.*
 
 ---
 
@@ -121,7 +127,7 @@ The **Total requests** chart shows the same requests by day. Agent and MCP reque
 
 1. `/v1/chat/completions` with `"model":"nova-micro"` returns `401` without a token.
 2. With a valid token it returns Nova's answer, `"model": "us.amazon.nova-micro-v1:0"` and a `usage` block.
-3. A few minutes after some traffic, the gateway's Overview shows requests, latency and tokens.
+3. A few minutes after some traffic, the gateway's Overview shows requests, latency and tokens, and **Observability → Overview** shows the cost.
 
 [`scripts/verify.sh`](scripts/verify.sh) runs these checks plus Steps 2 to 5's in one go. See [docs/demo.md](docs/demo.md).
 
