@@ -211,7 +211,7 @@ export AWS_DOMAIN=<your domain> ISSUER_URL=<issuer URL> CLIENT_ID=<client ID> CL
 
 ## Clean up
 
-Stop billing by removing what you created, **roughly in reverse order**.
+Stop billing by removing what you created, **roughly in reverse order**. **[docs/teardown.md](docs/teardown.md) has the commands for everything below, in a safe order.** The EKS cluster and the AgentCore runtimes are the main ongoing costs.
 
 - **AgentCore agents** (Step 3): both runtimes (`agent` and `agentjwt`), using the teardown in [Step 3](3-a2a-agent-gateway-agentcore.md#tearing-this-step-down). The CDK bootstrap stack (`CDKToolkit`) stays in the account; delete it only if nothing else uses CDK there.
 - **Echo backend** (Step 4): `kubectl -n kong delete service,deployment httpbin`.
