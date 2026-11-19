@@ -30,14 +30,13 @@ Steps 1 to 5 were run end to end in November 2026 with Kong Gateway `3.14.0.3`, 
 
 ## Commands that may trip readers up
 
-16. [docs/teardown.md](teardown.md) has commands for removing everything, but they haven't been run end to end yet.
-17. `agentcore remove all -y` is followed by `agentcore deploy`. Confirm this is the intended teardown, now that the project has two runtimes.
-18. The Python setup uses `--python 3.13`, while `agentcore.json` sets `"runtimeVersion": "PYTHON_3_14"`.
-19. **decK wrappers.** Some company setups wrap `deck` and refuse `--konnect-token`, taking the token from a pinned profile instead. If so, drop the flag and point the profile at the Konnect organization that holds `kong-aws`.
+16. [docs/teardown.md](teardown.md) was run once, in November 2026, and its fixes are included. Run it section by section and check each result.
+17. The Python setup uses `--python 3.13`, while `agentcore.json` sets `"runtimeVersion": "PYTHON_3_14"`.
+18. **decK wrappers.** Some company setups wrap `deck` and refuse `--konnect-token`, taking the token from a pinned profile instead. If so, drop the flag and point the profile at the Konnect organization that holds `kong-aws`.
 
 ## Accuracy and housekeeping
 
-20. **Version drift:** the DataPlane uses `kong/kong-gateway:3.14.0.3`, but the sample response in Step 2 shows `Server: kong/3.14.0.0-enterprise-edition`.
-21. **Typos:** "learn mode", "avaiable", "polcies", "existsing", "Speach", "the the", "At the sames".
-22. The scratch notes in the Step 3 appendix should be removed or turned into real content.
-23. `.DS_Store` files are tracked in `images/`. Remove them and add a `.gitignore`.
+19. **Version drift:** the DataPlane uses `kong/kong-gateway:3.14.0.3`, but the sample response in Step 2 shows `Server: kong/3.14.0.0-enterprise-edition`.
+20. **Typos:** "learn mode", "avaiable", "polcies", "existsing", "Speach", "the the", "At the sames".
+21. The scratch notes in the Step 3 appendix should be removed or turned into real content.
+22. `.DS_Store` files are tracked in `images/`. Remove them and add a `.gitignore`.

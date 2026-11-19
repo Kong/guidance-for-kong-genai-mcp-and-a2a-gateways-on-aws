@@ -2,182 +2,184 @@
 
 Back to the [README](../README.md).
 
-This page removes everything the guide creates, in an order that avoids leftovers: Kong and Konnect objects first (which also deletes the load balancers), then AgentCore, DNS and the certificate, the Helm releases, the EKS cluster, and finally IAM. The EKS cluster and the two AgentCore runtimes are the main ongoing costs, so if you only have a few minutes, do sections 1 to 5.
+This page removes everything the guide creates, in an order that avoids leftovers: Kong first (which also deletes its load balancer), then Kong Identity, the Kong Operator, AgentCore, the EKS cluster, the certificate and finally IAM. The EKS cluster and the two AgentCore runtimes are the main ongoing costs, so if you only have a few minutes, do sections 1 to 5.
 
-> **Not yet run end to end.** These commands follow the resources the guide creates, but this teardown hasn't been tested as a whole. Read each block before running it, and check the output before moving on. Commands that look things up print `not found` instead of failing when something is already gone.
-
-## 0. Set the names you used
-
-Run everything in one terminal. Adjust these if you changed names or added suffixes in a shared account (for example `bedrock-policy-kong314`):
-
-```bash
-export AWS_REGION=us-west-2
-export CLUSTER=kong314
-export AWS_DOMAIN=<your domain>
-export PAT=<your Konnect personal access token>
-
-export LBC_POLICY=AWSLoadBalancerControllerIAMPolicy
-export LBC_ROLE=AWSLoadBalancerControllerIAMRole-kong314
-export KONG_POLICY=bedrock-policy
-export KONG_ROLE=kaigateway-aws-podid-role
-
-export HOSTED_ZONE_ID=$(aws route53 list-hosted-zones --query "HostedZones[?Name=='$AWS_DOMAIN.'].Id" --output text | cut -d'/' -f3)
-export CERTIFICATE_ARN=$(aws acm list-certificates --region $AWS_REGION \
-  --query "CertificateSummaryList[?DomainName=='*.$AWS_DOMAIN'].CertificateArn | [0]" --output text)
-echo "zone=$HOSTED_ZONE_ID cert=$CERTIFICATE_ARN"
-```
-
-Both values should print. If `cert` shows `None`, the certificate is already gone.
-
-These helpers delete one DNS record, one IAM role or one IAM policy by name. They look the resource up first, so you don't need its details:
-
-```bash
-del_record() {
-  local rec
-  rec=$(aws route53 list-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" \
-    --query "ResourceRecordSets[?Name=='$1' && Type=='$2'] | [0]" --output json)
-  if [ "$rec" = "null" ]; then echo "not found: $1 $2"; return; fi
-  aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" \
-    --change-batch "$(jq -n --argjson r "$rec" '{Changes:[{Action:"DELETE",ResourceRecordSet:$r}]}')" \
-    --query ChangeInfo.Status --output text
-}
-del_role() {
-  aws iam get-role --role-name "$1" >/dev/null 2>&1 || { echo "not found: $1"; return; }
-  for arn in $(aws iam list-attached-role-policies --role-name "$1" --query 'AttachedPolicies[].PolicyArn' --output text); do
-    aws iam detach-role-policy --role-name "$1" --policy-arn "$arn"
-  done
-  aws iam delete-role --role-name "$1" && echo "deleted role $1"
-}
-del_policy() {
-  local arn
-  arn=$(aws iam list-policies --scope Local --query "Policies[?PolicyName=='$1'].Arn" --output text)
-  if [ -z "$arn" ]; then echo "not found: $1"; return; fi
-  for v in $(aws iam list-policy-versions --policy-arn "$arn" --query 'Versions[?!IsDefaultVersion].VersionId' --output text); do
-    aws iam delete-policy-version --policy-arn "$arn" --version-id "$v"
-  done
-  aws iam delete-policy --policy-arn "$arn" && echo "deleted policy $1"
-}
-```
+> **Run once, in November 2026.** The fixes from that run are included. Run the sections in order, read each block before running it, and check its output before moving on.
+>
+> **Every block sets what it needs**, so it works in any terminal, including a new one. The region is written out as `us-west-2`. If you used another domain than in the examples, or another suffix for IAM names, change it where the block says so.
 
 ## 1. Kong data plane, control plane and echo backend (Steps 2 and 4)
 
-The Kong Operator deletes the `kong-aws` control plane in Konnect when its resource is deleted, so delete these while the operator is still running. Deleting the data plane also deletes its NLB.
+The Kong Operator deletes the `kong-aws` control plane in Konnect when its resource is deleted, together with its routes and plugins, so delete these while the operator is still running. Deleting the data plane also deletes its NLB.
 
 ```bash
 kubectl -n kong delete service,deployment httpbin --ignore-not-found
 kubectl delete dataplane kong-aws-dp -n kong --wait=true
-kubectl delete konnectextensions.konnect.konghq.com konnect-config-aws -n kong
+kubectl delete konnectextensions.konnect.konghq.com konnect-config-aws -n kong --wait=true
 kubectl delete konnectgatewaycontrolplane kong-aws -n kong --wait=true
 kubectl delete konnectapiauthconfiguration konnect-api-auth-conf -n kong
-del_record "kong-dp.$AWS_DOMAIN." A
 ```
 
-Then confirm that the load balancers are gone. This can take a minute or two after the services are deleted:
+Check in Konnect that **API Gateway → Control planes** no longer lists `kong-aws`. If it does, delete it there.
+
+Delete the `kong-dp` DNS record. Set your domain on the first line:
 
 ```bash
-kubectl get svc -A | grep LoadBalancer
-aws elbv2 describe-load-balancers --region $AWS_REGION --query "LoadBalancers[?starts_with(LoadBalancerName, 'k8s-kong')].LoadBalancerName" --output text
+export AWS_DOMAIN=<your domain>
+export ZONE=$(aws route53 list-hosted-zones --query "HostedZones[?Name=='$AWS_DOMAIN.'].Id" --output text | cut -d'/' -f3)
+export REC=$(aws route53 list-resource-record-sets --hosted-zone-id $ZONE --query "ResourceRecordSets[?Name=='kong-dp.$AWS_DOMAIN.' && Type=='A'] | [0]" --output json)
+echo "$REC"
+aws route53 change-resource-record-sets --hosted-zone-id $ZONE --change-batch "$(jq -n --argjson r "$REC" '{Changes:[{Action:"DELETE",ResourceRecordSet:$r}]}')" --query ChangeInfo.Status --output text
 ```
 
-Both commands should print nothing. If an NLB is left over after a few minutes, delete it in the EC2 console (**Load Balancers**), otherwise it keeps billing after the cluster is gone.
+The `echo` shows the record before it's deleted. The last command prints `PENDING`, which means the deletion was accepted. If `echo` prints `null`, the record is already gone, and you can skip the last command.
 
-## 2. Kong Operator
+Then confirm the load balancer is gone. This can take a minute or two:
+
+```bash
+aws elbv2 describe-load-balancers --region us-west-2 --query "LoadBalancers[?starts_with(LoadBalancerName, 'k8s-kong')].LoadBalancerName" --output text
+```
+
+It should print nothing. **Don't continue until it does.** Section 5 removes the controller that deletes load balancers, and a leftover NLB keeps billing after the cluster is gone. If one is still listed after a few minutes, delete it in the EC2 console (**Load Balancers**).
+
+## 2. Kong Identity (Steps 3 and 5)
+
+List the authorization servers first, so you can see what you're deleting:
+
+```bash
+export PAT=<your Konnect personal access token>
+curl -s https://us.api.konghq.com/v1/auth-servers -H "Authorization: Bearer $PAT" | jq -r '.data[] | "\(.id)  \(.name)  \(.issuer)"'
+```
+
+Delete the one you created in Step 3 (`AuthZ_Server_1`, unless you renamed it). `force=true` is needed: without it, Konnect refuses to delete an auth server that still has clients, scopes or claims, and returns `400`. With it, they're deleted together:
+
+```bash
+export AUTHZ_SERVER_ID=$(curl -s https://us.api.konghq.com/v1/auth-servers -H "Authorization: Bearer $PAT" | jq -r '.data[] | select(.name=="AuthZ_Server_1") | .id')
+echo "deleting: $AUTHZ_SERVER_ID"
+curl -s -o /dev/null -w "delete: %{http_code}\n" -X DELETE "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID?force=true" -H "Authorization: Bearer $PAT"
+```
+
+You want `delete: 204`. Tokens it issued stop validating.
+
+## 3. Kong Operator (Step 2)
 
 ```bash
 helm uninstall kong-operator -n kong-system
 kubectl delete namespace kong kong-system --ignore-not-found
 ```
 
-If `kubectl delete namespace kong` hangs, a Kong resource still has a finalizer the operator didn't clear. Press Ctrl+C, list what's left with `kubectl api-resources --verbs=list --namespaced -o name | xargs -n1 kubectl get -n kong --ignore-not-found --show-kind`, and delete it in Konnect by hand.
-
-## 3. Kong Identity (Steps 3 and 5)
-
-```bash
-AUTHZ_SERVER_ID=$(curl -s "https://us.api.konghq.com/v1/auth-servers" -H "Authorization: Bearer $PAT" \
-  | jq -r '.data[] | select(.name=="AuthZ_Server_1") | .id')
-echo "auth server: $AUTHZ_SERVER_ID"
-curl -s -o /dev/null -w "delete: %{http_code}\n" -X DELETE "https://us.api.konghq.com/v1/auth-servers/$AUTHZ_SERVER_ID" \
-  -H "Authorization: Bearer $PAT"
-```
-
-You want a `204`. Its scope, claim and client should go with it, and tokens it issued stop validating. Check under **Identity** in Konnect.
+If `kubectl delete namespace kong` hangs for more than 2 minutes, a Kong resource still has a finalizer the operator didn't clear. Press Ctrl+C, list what's left with `kubectl api-resources --verbs=list --namespaced -o name | xargs -n1 kubectl get -n kong --ignore-not-found --show-kind`, and delete it in Konnect by hand.
 
 ## 4. AgentCore runtimes (Step 3)
 
-Run this in the AgentCore project folder (`agentcorekong`). Removing everything from the project and deploying again deletes the runtimes and the project's CloudFormation stack:
+Run this in the AgentCore project folder (`agentcorekong`). First empty the project, and check that it's empty:
 
 ```bash
-agentcore remove all -y
-agentcore deploy --region $AWS_REGION --yes
-aws bedrock-agentcore-control list-agent-runtimes --region $AWS_REGION \
-  --query "agentRuntimes[?starts_with(agentRuntimeName, 'agentcorekong')].agentRuntimeName" --output text
-aws cloudformation list-stacks --region $AWS_REGION --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
-  --query "StackSummaries[?starts_with(StackName, 'AgentCore-agentcorekong')].StackName" --output text
+agentcore remove all --yes
+jq '{runtimes: [.runtimes[].name]}' agentcore/agentcore.json
 ```
 
-Both commands should print nothing. If a stack is still listed, delete it with `aws cloudformation delete-stack --region $AWS_REGION --stack-name <that name>`.
+**Only continue if it shows `"runtimes": []`.** If the project still lists a runtime, the next command would simply deploy it again. Then deploy the empty project, which deletes both runtimes (`agent` and `agentjwt`) in AWS, and check:
+
+```bash
+agentcore deploy --region us-west-2 --yes
+aws bedrock-agentcore-control list-agent-runtimes --region us-west-2 --query "agentRuntimes[?starts_with(agentRuntimeName, 'agentcorekong')].agentRuntimeName" --output text
+aws cloudformation list-stacks --region us-west-2 --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query "StackSummaries[?starts_with(StackName, 'AgentCore-agentcorekong')].StackName" --output text
+```
+
+The runtime list should print nothing. If the stack list still shows `AgentCore-agentcorekong-default`, delete it:
+
+```bash
+aws cloudformation delete-stack --region us-west-2 --stack-name AgentCore-agentcorekong-default
+aws cloudformation wait stack-delete-complete --region us-west-2 --stack-name AgentCore-agentcorekong-default && echo "stack deleted"
+```
 
 The CDK bootstrap stack (`CDKToolkit`) was created on the first deploy if your account didn't have one. Leave it unless you know nothing else in the account uses CDK. Deleting it also requires emptying its S3 bucket first.
 
-## 5. EKS cluster and Load Balancer Controller (Step 1)
+## 5. Load Balancer Controller and EKS cluster (Step 1)
 
-Uninstall the controller only after section 1 confirmed the NLBs are gone, otherwise nothing is left to clean them up. Then delete the cluster, which takes about 10 to 15 minutes:
+Only once section 1 has confirmed the NLB is gone. Deleting the cluster takes about 10 to 15 minutes:
 
 ```bash
 helm uninstall aws-load-balancer-controller -n kube-system
-eksctl delete cluster --name $CLUSTER --region $AWS_REGION --wait
+eksctl delete cluster --name kong314 --region us-west-2 --wait
 ```
 
 `eksctl` also deletes the node group, the Pod Identity add-on and associations, and the CloudFormation stacks it created, usually including the IAM roles it made for the Pod Identity associations.
 
 ## 6. Certificate and validation record (Step 1)
 
+Set your domain on the first line:
+
 ```bash
-VALIDATION_NAME=$(aws acm describe-certificate --certificate-arn $CERTIFICATE_ARN --region $AWS_REGION \
-  --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Name' --output text)
-aws acm delete-certificate --certificate-arn $CERTIFICATE_ARN --region $AWS_REGION && echo "certificate deleted"
-del_record "$VALIDATION_NAME" CNAME
+export AWS_DOMAIN=<your domain>
+export ZONE=$(aws route53 list-hosted-zones --query "HostedZones[?Name=='$AWS_DOMAIN.'].Id" --output text | cut -d'/' -f3)
+export CERT=$(aws acm list-certificates --region us-west-2 --query "CertificateSummaryList[?DomainName=='*.$AWS_DOMAIN'].CertificateArn | [0]" --output text)
+export VNAME=$(aws acm describe-certificate --certificate-arn $CERT --region us-west-2 --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Name' --output text)
+export VREC=$(aws route53 list-resource-record-sets --hosted-zone-id $ZONE --query "ResourceRecordSets[?Name=='$VNAME' && Type=='CNAME'] | [0]" --output json)
+echo "zone=$ZONE"; echo "cert=$CERT"; echo "record=$VNAME"
+```
+
+All three lines should show values. Then delete the certificate and its validation record:
+
+```bash
+aws acm delete-certificate --certificate-arn $CERT --region us-west-2 && echo "certificate deleted"
+aws route53 change-resource-record-sets --hosted-zone-id $ZONE --change-batch "$(jq -n --argjson r "$VREC" '{Changes:[{Action:"DELETE",ResourceRecordSet:$r}]}')" --query ChangeInfo.Status --output text
 ```
 
 If `delete-certificate` says the certificate is in use, a load balancer still references it. Go back to section 1.
 
 ## 7. IAM roles and policies (Steps 1 and 2)
 
-Roles first, then policies. A policy that's still attached to something won't delete, which protects anything else using it.
+This deletes every role and customer-managed policy whose name contains your suffix, roles first. It prints each name as it goes. Set the suffix you used on the first line, for example `kong314`. Don't use a suffix that other people's IAM names might contain.
 
 ```bash
-del_role $LBC_ROLE
-del_role $KONG_ROLE
-del_policy $LBC_POLICY
-del_policy $KONG_POLICY
+export SUFFIX=kong314
+for r in $(aws iam list-roles --query "Roles[?contains(RoleName, '$SUFFIX')].RoleName" --output text); do
+  echo "role: $r"
+  for a in $(aws iam list-attached-role-policies --role-name $r --query 'AttachedPolicies[].PolicyArn' --output text); do aws iam detach-role-policy --role-name $r --policy-arn $a; done
+  aws iam delete-role --role-name $r && echo "  deleted"
+done
+for p in $(aws iam list-policies --scope Local --query "Policies[?contains(PolicyName, '$SUFFIX')].Arn" --output text); do
+  echo "policy: $p"
+  aws iam delete-policy --policy-arn $p && echo "  deleted"
+done
 ```
 
-> **Shared account?** Only delete names you created. If `AWSLoadBalancerControllerIAMPolicy` already existed before you started and you used a suffixed name instead, set `LBC_POLICY` to your suffixed name.
+If nothing prints under "role", `eksctl` already removed the roles in section 5. A policy that's still attached to something won't delete, which protects anything else using it.
+
+> **No suffix?** If you kept the guide's names, delete them one by one instead: the roles `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role`, then the policies `AWSLoadBalancerControllerIAMPolicy` and `bedrock-policy`. In a shared account, only delete names you created. `AWSLoadBalancerControllerIAMPolicy` in particular may already have existed before you started.
 
 ## 8. Domain and hosted zone (optional)
 
-Skip this if you used a domain you're keeping. A hosted zone costs a small monthly fee while it exists, and a domain registered in Step 1 renews automatically. To stop both:
+Skip this if you used a domain you're keeping. A hosted zone costs a small monthly fee while it exists, and a domain registered in Step 1 renews automatically. Set your domain on the first line:
 
 ```bash
-aws route53 list-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID \
-  --query "ResourceRecordSets[?Type!='NS' && Type!='SOA'].[Name,Type]" --output text
-aws route53 delete-hosted-zone --id $HOSTED_ZONE_ID
+export AWS_DOMAIN=<your domain>
+export ZONE=$(aws route53 list-hosted-zones --query "HostedZones[?Name=='$AWS_DOMAIN.'].Id" --output text | cut -d'/' -f3)
+aws route53 list-resource-record-sets --hosted-zone-id $ZONE --query "ResourceRecordSets[?Type!='NS' && Type!='SOA'].[Name,Type]" --output text
+```
+
+That must print nothing: a hosted zone can't be deleted while it still has records other than `NS` and `SOA`. Then:
+
+```bash
+aws route53 delete-hosted-zone --id $ZONE
 aws route53domains disable-domain-auto-renew --domain-name $AWS_DOMAIN --region us-east-1
 ```
 
-The first command must print nothing. A hosted zone can't be deleted while it still has records other than `NS` and `SOA`, so delete any it lists with `del_record`. Without the zone, the domain stops resolving.
+Without the zone, the domain stops resolving.
 
 ## 9. Credentials and local files
 
-- **Konnect personal access token:** revoke it in Konnect (your initials → **Personal Access Tokens**). It was also stored in the cluster, which is gone, and possibly in a kongctl profile (`~/.config/kongctl/config.yaml`).
-- **Working folders:** the AgentCore project, the decK and kongctl files, and `mcp-headers.txt` from the steps. None of them hold secrets, but you can delete them.
+- **Konnect personal access token:** revoke it in Konnect (your initials → **Personal Access Tokens**), unless you'll use it again soon. It may also be in a kongctl profile (`~/.config/kongctl/config.yaml`).
+- **Working folders:** the AgentCore project, the decK files and `mcp-headers.txt` from the steps. None of them hold secrets, but you can delete them.
 
 ## Check that nothing is still running
 
 ```bash
-eksctl get cluster --region $AWS_REGION
-aws elbv2 describe-load-balancers --region $AWS_REGION --query 'LoadBalancers[].LoadBalancerName' --output text
-aws bedrock-agentcore-control list-agent-runtimes --region $AWS_REGION --query 'agentRuntimes[].agentRuntimeName' --output text
+eksctl get cluster --region us-west-2
+aws elbv2 describe-load-balancers --region us-west-2 --query 'LoadBalancers[].LoadBalancerName' --output text
+aws bedrock-agentcore-control list-agent-runtimes --region us-west-2 --query 'agentRuntimes[].agentRuntimeName' --output text
 ```
 
-None of these should list anything from this guide. Check the **Billing** console a day later as well.
+None of these should list anything from this guide (`No clusters found` is good). In a shared account, other people's load balancers may still be listed. Check the **Billing** console a day later as well.
