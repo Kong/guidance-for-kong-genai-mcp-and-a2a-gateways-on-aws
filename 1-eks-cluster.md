@@ -28,7 +28,7 @@ This step builds only AWS resources. Nothing Kong-specific exists yet.
 
 > **Read before you copy.** The commands below use the names `kong314`, `us-west-2` and `kong-aws-ai-guidance.com` as written. If you change any of them, change them in every later command too.
 >
-> **Shared AWS account?** IAM policy names are global to the account. If `create-policy` fails with `EntityAlreadyExists`, someone already created a policy with that name, and it may be an outdated version. Add a suffix such as `-kong314` to the policy name, and use the same name in the `--permission-policy-arns` value and in [Clean up](README.md#clean-up).
+> **Shared AWS account?** IAM policy names are global to the account. Many accounts already have an `AWSLoadBalancerControllerIAMPolicy`, possibly an outdated version, so this guide names its policy `AWSLoadBalancerControllerIAMPolicy-kong314`. If `create-policy` still fails with `EntityAlreadyExists`, use a different suffix, and use the same name in the `--permission-policy-arns` value and in [Clean up](README.md#clean-up).
 
 ---
 
@@ -65,7 +65,7 @@ curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-cont
 
 ```
 aws iam create-policy \
-    --policy-name AWSLoadBalancerControllerIAMPolicy \
+    --policy-name AWSLoadBalancerControllerIAMPolicy-kong314 \
     --policy-document file://iam_policy.json
 ```
 
@@ -85,7 +85,7 @@ eksctl create podidentityassociation \
     --namespace kube-system \
     --service-account-name aws-load-balancer-controller \
     --role-name AWSLoadBalancerControllerIAMRole-kong314 \
-    --permission-policy-arns arn:aws:iam::<YOUR_AWS_ACCOUNT_ID>:policy/AWSLoadBalancerControllerIAMPolicy
+    --permission-policy-arns arn:aws:iam::<YOUR_AWS_ACCOUNT_ID>:policy/AWSLoadBalancerControllerIAMPolicy-kong314
 ```
 
 ```
@@ -275,7 +275,7 @@ Keep this terminal open. Step 2 uses the `AWS_DOMAIN`, `CERTIFICATE_ARN` and `HO
 
 - **The certificate stays `PENDING_VALIDATION`.** ACM can't see the CNAME yet. Check that the domain registration operation has finished (the `get-operation-detail` command), that the CNAME was created in the right hosted zone, and that the domain is delegated to that zone (the `dig NS` check under [Using a domain you already have](#using-a-domain-you-already-have)). `dig +short CNAME $RESOURCE_RECORD_NAME @8.8.8.8` must return the validation value.
 - **`helm install` says it can't find the `eks` repository.** Run the `helm repo add eks ...` command above first.
-- **`create-policy` fails with `EntityAlreadyExists`.** The policy name is taken in this account. Use a suffixed name (see the note at the top).
+- **`create-policy` fails with `EntityAlreadyExists`.** The policy name is taken in this account. Use a different suffix (see the note at the top).
 - **Route 53 domain commands fail in `us-west-2`.** The Route 53 Domains API is only available in `us-east-1`, which is why those commands pass `--region us-east-1`, while ACM and EKS use `us-west-2`.
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-1-eks-and-networking).
 

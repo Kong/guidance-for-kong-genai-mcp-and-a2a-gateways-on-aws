@@ -232,7 +232,7 @@ In short, roughly in reverse order:
 - **The AgentCore runtime** and its CloudFormation stack (Step 3).
 - **The AWS Load Balancer Controller and the EKS cluster** `kong314` (Step 1), the largest ongoing charges.
 - **The ACM certificate** and its validation record (Step 1).
-- **IAM policies and roles**: `AWSLoadBalancerControllerIAMPolicy`, `bedrock-policy`, `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role` (or the suffixed names you used).
+- **IAM policies and roles**: `AWSLoadBalancerControllerIAMPolicy-kong314`, `bedrock-policy`, `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role` (or the suffixed names you used).
 - **Optionally, the Route 53 hosted zone and domain** (Step 1).
 
 Check the Billing console a day later to confirm nothing is still running.

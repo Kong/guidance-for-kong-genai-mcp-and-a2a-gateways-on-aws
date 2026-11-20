@@ -17,7 +17,7 @@ Run `helm repo add eks https://aws.github.io/eks-charts` and `helm repo update e
 
 ### `create-policy` fails with EntityAlreadyExists
 
-IAM policy names are global to the AWS account, and a shared account may already have one with the guide's name, possibly an outdated version. Create the policy with a suffixed name (for example `AWSLoadBalancerControllerIAMPolicy-kong314`) and use that name in the Pod Identity command and in clean-up.
+IAM policy names are global to the AWS account, and a shared account may already have one with the guide's name, possibly an outdated version. That's why the guide uses the suffixed name `AWSLoadBalancerControllerIAMPolicy-kong314`. If that name is taken too, use a different suffix, and use that name in the Pod Identity command and in clean-up.
 
 ### The domain registration command fails or is rejected
 
