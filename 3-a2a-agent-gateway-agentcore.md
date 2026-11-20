@@ -207,12 +207,12 @@ The Agent defines an AgentCard with has only one Skill. Here are some concise de
 * An [Agent Skill](https://a2a-protocol.org/v1.0.0/tutorials/python/3-agent-skills-and-card/#agent-skills) describes a specific capability or function the Agent can perform. It's a building block that tells clients what kinds of tasks the agent is good for.
 * An [Agent Card](https://a2a-protocol.org/v1.0.0/tutorials/python/3-agent-skills-and-card/#agent-card) is a JSON document that an A2A Server makes available, typically at a [.well-known/agent-card.json endpoint](https://a2a-protocol.org/v1.0.0/topics/agent-discovery/#1-well-known-uri). It's like a digital business card for the agent.
 
-To try it out, make sure you have [Python and the official A2A SDK](code/a2a/python-a2a-sdk-install.md) installed.
+To try it out, run the agent from the root of this repo. `uv` installs Python 3.13 and the A2A SDK for this run and starts the agent, so there's no virtual environment to set up:
+```
+uv run --python 3.13 --with uvicorn --with "a2a-sdk[all]" code/a2a/server_1.py
+```
 
-Put the Agent to run:
-```
-python3 server_1.py
-```
+The first run takes a minute while it downloads the packages. The agent is up when it prints `Uvicorn running on http://0.0.0.0:9000`. It keeps running in this terminal; stop it with Ctrl+C when you're done.
 
 ### Discovery Endpoint
 In another terminal send a request to its discovery endpoint:

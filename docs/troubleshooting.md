@@ -102,9 +102,9 @@ Some company setups wrap kongctl (and decK) to pin each folder to a profile, and
 
 ## Step 3: A2A and AgentCore
 
-### `python3 server_1.py` fails with import errors
+### The local agent fails with `can't open file` or import errors
 
-Set up the virtual environment and install the A2A SDK first, as described in [code/a2a/python-a2a-sdk-install.md](../code/a2a/python-a2a-sdk-install.md). Its last commands check that `a2a` imports. `server_1.py` needs `a2a-sdk` 1.x (`a2a.helpers`).
+Run it from the root of this repo with the `uv run` command in [Step 3](../3-a2a-agent-gateway-agentcore.md#the-first-agent): the file is at `code/a2a/server_1.py`, and `uv run --with` installs the A2A SDK for you. A plain `python3 server_1.py` fails with `can't open file` from the repo root, and with import errors when the SDK isn't installed. `server_1.py` needs `a2a-sdk` 1.x (`a2a.helpers`).
 
 ### `agentcore create` rejects `--defaults`
 
