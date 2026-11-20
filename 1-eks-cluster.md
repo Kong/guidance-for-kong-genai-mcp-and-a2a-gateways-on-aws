@@ -105,7 +105,23 @@ Make sure you have a Registered Domain, so we can issue a Digital Certificate to
 
 ### Using a domain you already have
 
-If you already have a domain with a **public** hosted zone in Route 53, skip the registration commands below: set `AWS_DOMAIN` to it and continue at [AWS Certificate Manager](#aws-certificate-manager). First check that the internet actually reaches that zone, because ACM validation silently waits forever otherwise:
+If you already have a domain with a **public** hosted zone in Route 53, skip the registration commands below: set `AWS_DOMAIN` to it and continue at [AWS Certificate Manager](#aws-certificate-manager).
+
+To find which domains your account already has, list its public hosted zones and the domains registered through Route 53:
+
+```
+# Public hosted zones (this is what the ACM certificate needs)
+aws route53 list-hosted-zones \
+  --query "HostedZones[?Config.PrivateZone==\`false\`].[Name,Id]" --output table
+
+# Domains registered through Route 53 (this API only works in us-east-1)
+aws route53domains list-domains --region us-east-1 \
+  --query "Domains[].[DomainName,Expiry]" --output table
+```
+
+Pick a domain from the first list, without the trailing dot, and skip any whose expiry date has passed. A domain that appears only in the first list is registered somewhere else, which is fine as long as the check below passes. If the first list is empty, go to [Registering a new domain](#registering-a-new-domain).
+
+Then check that the internet actually reaches that zone, because ACM validation silently waits forever otherwise:
 
 ```
 export AWS_DOMAIN=<your domain>
