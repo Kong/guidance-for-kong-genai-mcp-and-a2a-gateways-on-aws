@@ -607,6 +607,7 @@ ai_gateway_agents:
 Preview the change, then apply it, from the root of this repo:
 
 ```
+cd ..
 kongctl diff --mode apply -f code/ai-gateway/step3-agent.yaml --pat "$PAT"
 kongctl apply -f code/ai-gateway/step3-agent.yaml --auto-approve --pat "$PAT"
 ```
