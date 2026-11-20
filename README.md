@@ -154,7 +154,7 @@ Run everything in **one terminal session**, from the root of this repo. Later st
 
 **Why this step.** This is where Kong and AWS meet. Konnect's AI Gateway is the control plane, where you declare agents, MCP servers, models and auth strategies. It never sits in the request path. The data plane runs as pods in your cluster and gets AWS permissions only through an IAM role bound with EKS Pod Identity.
 
-**What it does.** Creates the `bedrock-policy` IAM policy and binds it to Kong's service account, installs the Kong Operator with its AI Gateway controller, creates the `kong-aws-ai` AI Gateway in Konnect and its data plane in EKS behind an internet-facing NLB with your ACM certificate, points `ai-dp.<your domain>` at the NLB, and sets up kongctl.
+**What it does.** Creates the `bedrock-policy-kong314` IAM policy and binds it to Kong's service account, installs the Kong Operator with its AI Gateway controller, creates the `kong-aws-ai` AI Gateway in Konnect and its data plane in EKS behind an internet-facing NLB with your ACM certificate, points `ai-dp.<your domain>` at the NLB, and sets up kongctl.
 
 **Verify.** `https://ai-dp.<your domain>` returns `404 Not Found` (Kong is up, nothing is declared yet), and `kongctl get ai-gateways` lists **Kong AWS AI Gateway**.
 
@@ -232,7 +232,7 @@ In short, roughly in reverse order:
 - **The AgentCore runtime** and its CloudFormation stack (Step 3).
 - **The AWS Load Balancer Controller and the EKS cluster** `kong314` (Step 1), the largest ongoing charges.
 - **The ACM certificate** and its validation record (Step 1).
-- **IAM policies and roles**: `AWSLoadBalancerControllerIAMPolicy-kong314`, `bedrock-policy`, `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role` (or the suffixed names you used).
+- **IAM policies and roles**: `AWSLoadBalancerControllerIAMPolicy-kong314`, `bedrock-policy-kong314`, `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role` (or the suffixed names you used).
 - **Optionally, the Route 53 hosted zone and domain** (Step 1).
 
 Check the Billing console a day later to confirm nothing is still running.

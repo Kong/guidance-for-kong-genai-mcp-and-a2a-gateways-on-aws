@@ -60,7 +60,7 @@ Kong adds to your AWS footprint. It doesn't route around it. Here is what this r
 | AWS service | How this guide uses it | Where |
 |---|---|---|
 | **Amazon EKS** | Runs the Kong data plane as pods, managed by the Kong Operator. | Steps 1–2 |
-| **EKS Pod Identity + IAM** | The only way Kong gets AWS permissions. The `bedrock-policy` lists exactly which Bedrock, AgentCore and Secrets Manager actions Kong may call. The AI Gateway uses it to sign calls to AgentCore and Bedrock. | Steps 2, 3, 6 |
+| **EKS Pod Identity + IAM** | The only way Kong gets AWS permissions. The `bedrock-policy-kong314` lists exactly which Bedrock, AgentCore and Secrets Manager actions Kong may call. The AI Gateway uses it to sign calls to AgentCore and Bedrock. | Steps 2, 3, 6 |
 | **Network Load Balancer** | Created by the AWS Load Balancer Controller as Kong's public entry point. | Steps 1–2 |
 | **AWS Certificate Manager** | Wildcard certificate on the NLB's 443 listener, issued and renewed by AWS. | Steps 1–2 |
 | **Route 53** | Domain registration, DNS validation for ACM, and the `ai-dp.<domain>` alias to the NLB. | Steps 1–2 |

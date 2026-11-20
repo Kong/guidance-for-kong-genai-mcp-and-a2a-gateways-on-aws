@@ -24,7 +24,7 @@ This step is also where AWS IAM enters the picture. Kong doesn't get AWS access 
 
 ## What it does, in plain English
 
-1. Creates an IAM policy (`bedrock-policy`) and binds it to a Kubernetes service account (`kaigateway-podid-sa`) through Pod Identity.
+1. Creates an IAM policy (`bedrock-policy-kong314`) and binds it to a Kubernetes service account (`kaigateway-podid-sa`) through Pod Identity.
 2. Installs the **Kong Operator**, a Kubernetes controller that creates Konnect objects and Kong deployments from YAML, with its AI Gateway data plane controller turned on.
 3. Uses the operator to create an **AI Gateway** named `kong-aws-ai` in Konnect, and its **data plane** `kong-aws-ai-dp` in EKS, running as that service account.
 4. Puts an internet-facing **NLB** in front of the data plane, with your ACM certificate from Step 1 on port 443.
@@ -42,7 +42,7 @@ This step is also where AWS IAM enters the picture. Kong doesn't get AWS access 
 
 > **Heads-up about the IAM policy below.** It allows `bedrock:ApplyGuardrail`, `bedrock:InvokeModel`, `secretsmanager:GetSecretValue` and related actions on `"Resource": "*"`. That is broader than you'd use in production. Scope it down to specific resource ARNs before using this in production.
 >
-> **Shared AWS account?** If `bedrock-policy` or `kaigateway-aws-podid-role` already exists, use suffixed names (for example `bedrock-policy-kong314`) and use them consistently, as in Step 1.
+> **Shared AWS account?** IAM names are global to the account, so the policy is named `bedrock-policy-kong314`. If it or `kaigateway-aws-podid-role` already exists, use a different suffix and use the names consistently, as in Step 1.
 
 ---
 
@@ -52,7 +52,7 @@ The data plane calls AWS services (AgentCore, Bedrock, and in the reference arch
 
 ```
 aws iam create-policy \
- --policy-name bedrock-policy \
+ --policy-name bedrock-policy-kong314 \
  --policy-document '{
 	"Version": "2012-10-17",
 	"Statement": [
@@ -88,7 +88,7 @@ eksctl create podidentityassociation \
   --namespace kong \
   --service-account-name kaigateway-podid-sa \
   --role-name kaigateway-aws-podid-role \
-  --permission-policy-arns arn:aws:iam::<YOUR_AWS_ACCOUNT>:policy/bedrock-policy
+  --permission-policy-arns arn:aws:iam::<YOUR_AWS_ACCOUNT>:policy/bedrock-policy-kong314
 ```
 
 ## Kong Operator

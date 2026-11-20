@@ -147,7 +147,7 @@ done
 
 If nothing prints under "role", `eksctl` already removed the roles in section 5. A policy that's still attached to something won't delete, which protects anything else using it.
 
-> **No suffix?** If you kept the guide's names, delete them one by one instead: the roles `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role`, then the policies `AWSLoadBalancerControllerIAMPolicy-kong314` and `bedrock-policy`. In a shared account, only delete names you created. Don't delete an unsuffixed `AWSLoadBalancerControllerIAMPolicy`: it existed before this guide and belongs to someone else.
+> **No suffix?** If you kept the guide's names, delete them one by one instead: the roles `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role`, then the policies `AWSLoadBalancerControllerIAMPolicy-kong314` and `bedrock-policy-kong314`. In a shared account, only delete names you created. Don't delete an unsuffixed `AWSLoadBalancerControllerIAMPolicy`: it existed before this guide and belongs to someone else.
 
 ## 8. Domain and hosted zone (optional)
 

@@ -17,7 +17,7 @@ Each step was run in November 2026 with Kong Operator `2.4.0`, the `kong/kong-ai
 2. **`/a2a` and `/mcp` are open between Steps 3 and 5.** Until Step 5 adds the auth strategy, anyone who knows the URL can call the agent and the tools, and Kong signs the agent calls with its own IAM role. In production, attach the auth strategy before exposing anything.
 3. **The client secret is stored in the auth strategy's config** in Konnect. Use a Konnect vault reference for production.
 4. **`logging.payloads: true`** on the agent logs full request and response bodies.
-5. **The IAM policy is broad.** `bedrock-policy` uses `"Resource": "*"` for every action, including `secretsmanager:ListSecrets` / `GetSecretValue`. Scope it to the specific AgentCore runtime, Bedrock model, guardrail and secret ARNs. Also confirm `bedrock:CallWithBearerToken` is needed.
+5. **The IAM policy is broad.** `bedrock-policy-kong314` uses `"Resource": "*"` for every action, including `secretsmanager:ListSecrets` / `GetSecretValue`. Scope it to the specific AgentCore runtime, Bedrock model, guardrail and secret ARNs. Also confirm `bedrock:CallWithBearerToken` is needed.
 6. **TLS.** The data plane's NLB uses the AWS default TLS policy, and port 80 is open in plain HTTP. The operator also adds port 8443 (Kong's own TLS proxy, with a self-signed certificate). Consider a TLS 1.3 policy and removing ports 80 and 8443.
 7. **Possible AWS account IDs in sample output.** Check sample outputs for 12-digit account numbers (for example inside runtime ARNs) and replace them with `<YOUR_AWS_ACCOUNT>`.
 
