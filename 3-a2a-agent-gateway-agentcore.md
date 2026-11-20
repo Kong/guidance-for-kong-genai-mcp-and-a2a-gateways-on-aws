@@ -370,15 +370,15 @@ npm install -g @aws/agentcore
 agentcore --version
 ```
 
-Create the project from the A2A Python template. Run this outside this repo, for example in a working folder of your own. Older CLI versions took `--defaults`; current versions take `--template` (`agentcore create --help` lists the templates).
+Create the project from the A2A Python template. Run this from the root of this repo. Older CLI versions took `--defaults`; current versions take `--template` (`agentcore create --help` lists the templates).
 ```
 agentcore create --name agentcorekong --template a2a-python-strands --region us-west-2
 cd agentcorekong
 ```
 
-This creates `agentcore/agentcore.json` (the project spec) and `app/agent/` (the code for a runtime named `agent`). The template's code is a Strands LLM agent. Replace it with this guide's agent, using the path to your clone of this repo:
+This creates `agentcore/agentcore.json` (the project spec) and `app/agent/` (the code for a runtime named `agent`). The template's code is a Strands LLM agent. Replace it with this guide's agent:
 ```
-cp <path-to-this-repo>/code/a2a/server_1.py app/agent/
+cp ../code/a2a/server_1.py app/agent/
 ```
 
 ### Agent configuration
