@@ -2,3 +2,5 @@
 iam_policy.json
 agentcorekong/
 .konnect-profile
+# Written by the Step 5 MCP curl
+mcp-headers.txt

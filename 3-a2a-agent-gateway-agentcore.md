@@ -612,6 +612,8 @@ kongctl diff --mode apply -f code/ai-gateway/step3-agent.yaml --pat "$PAT"
 kongctl apply -f code/ai-gateway/step3-agent.yaml --auto-approve --pat "$PAT"
 ```
 
+> **kongctl refuses `--pat`?** If a wrapper such as konnect-guard blocks token flags, leave `--pat "$PAT"` off and pin this folder to a kongctl profile for the organization that holds `kong-aws-ai`. See [troubleshooting](docs/troubleshooting.md#kongctl-reaches-the-wrong-konnect-organization-or-refuses---pat).
+
 The preview shows one `ai_gateway_agent` to create. In Konnect it appears under **AI Gateway → Agents**, with its route `/a2a`:
 
 ![Konnect AI Gateway Agents page listing one enabled agent, AgentCore Hello World Agent (agentcore-hello), of type A2A (Agent-to-Agent), with the route Path: /a2a](images/step3-a2a/02-konnect-agents.png)

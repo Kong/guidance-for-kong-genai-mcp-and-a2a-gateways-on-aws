@@ -211,6 +211,8 @@ kongctl diff --mode apply -f code/ai-gateway/step5-auth.yaml --pat "$PAT"
 kongctl apply -f code/ai-gateway/step5-auth.yaml --auto-approve --pat "$PAT"
 ```
 
+> **kongctl refuses `--pat`?** If a wrapper such as konnect-guard blocks token flags, leave `--pat "$PAT"` off and pin this folder to a kongctl profile for the organization that holds `kong-aws-ai`. See [troubleshooting](docs/troubleshooting.md#kongctl-reaches-the-wrong-konnect-organization-or-refuses---pat).
+
 The preview shows one `ai_gateway_auth_strategy` to create, with the secret and the `!env` values redacted, and the agent and MCP server to update with their `access` block. In Konnect the strategy appears under the gateway's **Auth strategies** tab.
 
 kongctl validates the whole file before it changes anything. If it reports an error, nothing in the file was applied, so fix the error and run it again.

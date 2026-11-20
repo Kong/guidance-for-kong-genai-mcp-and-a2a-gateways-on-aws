@@ -224,6 +224,8 @@ kongctl diff --mode apply -f code/ai-gateway/step4-mcp.yaml --pat "$PAT"
 kongctl apply -f code/ai-gateway/step4-mcp.yaml --auto-approve --pat "$PAT"
 ```
 
+> **kongctl refuses `--pat`?** If a wrapper such as konnect-guard blocks token flags, leave `--pat "$PAT"` off and pin this folder to a kongctl profile for the organization that holds `kong-aws-ai`. See [troubleshooting](docs/troubleshooting.md#kongctl-reaches-the-wrong-konnect-organization-or-refuses---pat).
+
 The preview shows one `ai_gateway_mcp_server` to create, and nothing changed on the Step 3 agent. In Konnect it appears under **AI Gateway → MCP Servers**, with its two tools:
 
 ![Konnect AI Gateway MCP servers page listing one enabled MCP server, Inventory and Orders Tools (inventory-tools), of type Conversion listener, with 2 tools](images/step4-mcp/02-konnect-mcp-servers.png)

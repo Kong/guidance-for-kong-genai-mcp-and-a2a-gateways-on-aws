@@ -98,7 +98,19 @@ The operator adds Kong's own TLS proxy port to the service. It serves the same r
 
 ### kongctl reaches the wrong Konnect organization, or refuses `--pat`
 
-Some company setups wrap kongctl (and decK) to pin each folder to a profile, and refuse token flags. Leave out `--pat "$PAT"`, and run kongctl from a folder pinned to the profile for the organization that holds `kong-aws-ai`. `kongctl get ai-gateways` is a safe check.
+Some company setups wrap kongctl (and decK) to pin each folder to a profile, and refuse token flags (for example `konnect-guard: token flags are not allowed`). Leave out `--pat "$PAT"`, and run kongctl from a folder pinned to a profile for the organization that holds `kong-aws-ai`:
+
+1. If no kongctl profile uses this PAT yet, add one from the root of this repo:
+   ```
+   cat >> ~/.config/kongctl/config.yaml <<EOF
+
+   kong-aws-ai:
+     konnect:
+       pat: $PAT
+   EOF
+   ```
+2. Pin this repo to that profile. With konnect-guard, run `konnect-profile set`, choose the profile, and press Enter to save the pin in the repo root. Check that the organization it prints is the one that holds `kong-aws-ai`.
+3. Check with `kongctl get ai-gateways`. It should list **Kong AWS AI Gateway**.
 
 ## Step 3: A2A and AgentCore
 

@@ -64,6 +64,8 @@ kongctl diff --mode apply -f code/ai-gateway/step6-bedrock.yaml --pat "$PAT"
 kongctl apply -f code/ai-gateway/step6-bedrock.yaml --auto-approve --pat "$PAT"
 ```
 
+> **kongctl refuses `--pat`?** If a wrapper such as konnect-guard blocks token flags, leave `--pat "$PAT"` off and pin this folder to a kongctl profile for the organization that holds `kong-aws-ai`. See [troubleshooting](docs/troubleshooting.md#kongctl-reaches-the-wrong-konnect-organization-or-refuses---pat).
+
 The preview shows the provider and the model to create. The auth strategy shows no change, apart from a secret write. In Konnect they appear under **AI Gateway → Models** and **Providers**.
 
 ## Call the model

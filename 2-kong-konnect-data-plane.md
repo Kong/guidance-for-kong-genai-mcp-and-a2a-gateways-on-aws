@@ -233,6 +233,8 @@ kongctl get ai-gateways --pat "$PAT"
 
 It should list **Kong AWS AI Gateway**. The `kongctl` commands in later steps pass `--pat "$PAT"`. If you've logged kongctl in with a profile instead (`kongctl login`), you can leave that flag out.
 
+> **kongctl refuses `--pat`?** If a wrapper such as konnect-guard blocks token flags, leave `--pat "$PAT"` off and pin this folder to a kongctl profile for the organization that holds `kong-aws-ai`. See [troubleshooting](docs/troubleshooting.md#kongctl-reaches-the-wrong-konnect-organization-or-refuses---pat).
+
 ---
 
 ## Verify
