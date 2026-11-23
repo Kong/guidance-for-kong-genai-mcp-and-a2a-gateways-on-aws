@@ -21,7 +21,7 @@ This step builds only AWS resources. Nothing Kong-specific exists yet.
 ## Before you start
 
 - AWS CLI configured for an account where you can create EKS clusters, IAM policies **and roles**, Route 53 domains and ACM certificates. A role without IAM write access (some "PowerUser" roles) fails at the first `create-policy`.
-- Sign in to the AWS CLI (`aws login`, or `aws sso login` for IAM Identity Center) and confirm it works with `aws sts get-caller-identity`. The `Account` it prints is the value for `<YOUR_AWS_ACCOUNT_ID>`. Sessions expire, so if a command fails with "login session has expired", sign in again.
+- You've run the commands in [Check your setup](README.md#check-your-setup): tools installed, signed in to AWS, and `aws sts get-caller-identity` returning your account. The `Account` it prints is the value for `<YOUR_AWS_ACCOUNT_ID>`. Sessions expire, so if a command fails with "login session has expired", sign in again.
 - `eksctl`, `kubectl`, `helm`, `jq` and `curl` installed (see the [Prerequisites](README.md#prerequisites) table).
 - Your AWS account ID, which you'll need in place of `<YOUR_AWS_ACCOUNT_ID>`.
 - Optional: `export AWS_PAGER=""`, so AWS CLI output prints straight to the terminal instead of opening a pager.
@@ -35,6 +35,14 @@ This step builds only AWS resources. Nothing Kong-specific exists yet.
 # AWS and EKS
 
 ## EKS Cluster Creation
+
+First, confirm your AWS session is live. `eksctl` needs valid credentials and fails right away if they've expired:
+
+```bash
+aws sts get-caller-identity
+```
+
+If that prints `login session has expired, please reauthenticate`, sign in again with `aws login` (or `aws sso login --profile <YOUR_PROFILE>`) and re-run it. The full checklist is in [Check your setup](README.md#check-your-setup).
 
 Create the **EKS Cluster** with:
 ```

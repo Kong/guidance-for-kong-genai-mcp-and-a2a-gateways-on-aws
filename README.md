@@ -128,6 +128,88 @@ These are the command-line tools the steps use. Install each one from its own in
 | npm + [AgentCore CLI](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agentcore-get-started-cli.html) | Creates and deploys the AgentCore agent (tested with 1.1.0) | Step 3 |
 | [awscurl](https://pypi.org/project/awscurl/) | Sends SigV4-signed requests straight to AgentCore | Step 3 |
 
+### Check your setup
+
+Run these before Step 1. Each one takes seconds, and each catches a problem that would otherwise stop a later step halfway through.
+
+**1. Confirm the tools are installed.** Every command should print a version. "command not found" means that tool still needs installing.
+
+```bash
+aws --version
+eksctl version
+kubectl version --client
+helm version --short
+kongctl version
+curl --version | head -1
+jq --version
+jwt --version
+uv --version
+agentcore --version
+command -v awscurl
+```
+
+**2. Sign in to AWS.** Use the one that matches how you get AWS credentials.
+
+```bash
+# AWS console credentials
+aws login
+
+# or IAM Identity Center (SSO)
+aws sso login --profile <YOUR_PROFILE>
+export AWS_PROFILE=<YOUR_PROFILE>
+```
+
+**3. Confirm the sign-in worked.**
+
+```bash
+aws sts get-caller-identity
+```
+
+It should print your `UserId`, `Account` and `Arn`. If it prints `login session has expired, please reauthenticate` (or `Token has expired` for SSO), run step 2 again. Sessions expire, so expect to do this again partway through the guide. `eksctl`, `helm` and `kubectl` all fail with the same message when it happens.
+
+**4. Set the shell defaults the steps assume.**
+
+```bash
+export AWS_REGION=us-west-2
+export AWS_PAGER=""
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+echo "$AWS_ACCOUNT_ID"
+```
+
+The account ID it prints is the value to use wherever a command says `<YOUR_AWS_ACCOUNT_ID>`. Run these in every new terminal window.
+
+**5. For tools that can't read an `aws login` session** (the AgentCore CLI's CDK deploy and `awscurl` in Step 3), export the session as plain environment variables:
+
+```bash
+eval "$(aws configure export-credentials --format env)"
+```
+
+These exported credentials expire too. After you sign in again, run this line again.
+
+**6. Confirm the account can reach the services this guide uses.**
+
+```bash
+# EKS in us-west-2 (an empty list is fine)
+aws eks list-clusters --region us-west-2
+
+# Amazon Nova Micro on Bedrock (Step 6). A short reply means you have access.
+aws bedrock-runtime converse --region us-west-2 --model-id us.amazon.nova-micro-v1:0 \
+  --messages '[{"role":"user","content":[{"text":"Say hi in five words"}]}]' \
+  --query 'output.message.content[0].text' --output text
+```
+
+`AccessDeniedException` on the first command means your role can't use EKS. On the second, it means the model isn't enabled for the account in `us-west-2`.
+
+**7. Optional: if you already have a Konnect Personal Access Token**, check that it works against the US region. Otherwise you'll create one in Step 2.
+
+```bash
+export PAT=<YOUR_PAT>
+curl -s -o /dev/null -w "%{http_code}\n" -H "Authorization: Bearer $PAT" \
+  https://us.api.konghq.com/v2/control-planes
+```
+
+`200` means the token works. `401` means it's wrong or expired.
+
 ## Steps
 
 Each step below gives the **why**, a plain-English summary and a **Verify** check. To run a step, open its **full doc**: it has every command in order, with expected output, optional checks and background. Run the steps in order. Each one builds on the one before.
