@@ -25,14 +25,14 @@ Each step was run in November 2026 with Kong Operator `2.4.0`, the `kong/kong-ai
 
 8. **`client_1.py` isn't updated for the AI Gateway.** It uses the sample domain `kong-dp.kong-demo.com` over `http://`, and doesn't send a Kong Identity token, which `/a2a` needs after Step 5. Update it to read the domain and a token from the environment, then test it.
 9. **Cost on the gateway's Overview rounds to the cent.** With small test volumes it shows `$0.00`. **Observability → Overview** shows the exact figure (for example `$0.0002835` for about 2,100 Nova Micro tokens).
-10. **Architecture pieces with no deployment steps:** Bedrock Guardrails, MemoryDB (semantic cache, routing and guards), Secrets Manager (vault), and Kong metrics to CloudWatch.
+10. **Architecture pieces with no deployment steps:** Bedrock Guardrails, MemoryDB (semantic cache, routing and guards), Secrets Manager as a vault for Kong's own credentials and certificates, and Kong metrics to CloudWatch. Step 7 uses Secrets Manager only for the agent's Kong Identity client secret.
 11. **Two different agents.** `code/a2a/server_1.py` (deployed to AgentCore) adds header-logging and A2A-version-normalizing middleware that the inline code in Step 3 doesn't have. Its first line also prints the SDK version, which is debugging output.
 12. **Kong doesn't trust `httpbin.konghq.com`'s certificate chain.** From a data plane that verifies upstream TLS, calls to it fail with `unable to get local issuer certificate`, while `curl` in the same cluster succeeds. Step 4 uses an in-cluster backend instead. The likely cause is Kong's CA bundle lacking the newer Let's Encrypt roots (`Root YE`, `ISRG Root X2`). Worth confirming with the Kong Gateway team, since real upstreams can use the same chain.
 
 ## Commands that may trip readers up
 
 13. **The operator's AI data plane controller is off by default**, and the data plane's container must be named `aigw`. Both are handled in Step 2, but if either is missed, the failure is silent or the error message is unclear.
-14. **Steps 5 and 6 re-declare entities.** Step 5's file re-declares the Step 3 agent and Step 4 MCP server to add their `access` block, and Step 6's re-declares the Step 5 auth strategy so the model can reference it. Re-running an earlier step's file after Step 5 (for example Step 3's) removes the `access` block again and reopens that route.
+14. **Steps 5 to 8 re-declare entities.** Step 5's file re-declares the Step 3 agent and Step 4 MCP server to add their `access` block. Steps 6, 7 and 8 each re-declare the Step 5 auth strategy so their entities can reference it. Step 7's re-declares the MCP server with the inventory API's URL, and Step 8's re-declares the agent with the rate-limit policy attached. Re-running an earlier step's file undoes what a later one added: for example, Step 3's file after Step 5 removes the `access` block and reopens `/a2a`, and Step 5's file after Step 8 removes the rate limit.
 15. **kongctl wrappers.** Some company setups wrap kongctl and refuse `--pat`, taking the token from a pinned profile instead. If so, drop the flag and point the profile at the Konnect organization that holds `kong-aws-ai`.
 16. The Python setup uses `--python 3.13`, while `agentcore.json` sets `"runtimeVersion": "PYTHON_3_14"`.
 

@@ -64,10 +64,10 @@ Kong adds to your AWS footprint. It doesn't route around it. Here is what this r
 | **Network Load Balancer** | Created by the AWS Load Balancer Controller as Kong's public entry point. | Steps 1–2 |
 | **AWS Certificate Manager** | Wildcard certificate on the NLB's 443 listener, issued and renewed by AWS. | Steps 1–2 |
 | **Route 53** | Domain registration, DNS validation for ACM, and the `ai-dp.<domain>` alias to the NLB. | Steps 1–2 |
-| **Bedrock AgentCore** | Hosts the A2A agent. Kong signs each call to it with its IAM role, after checking the caller's Kong Identity token, so callers don't need AWS credentials. | Steps 3, 5 |
+| **Bedrock AgentCore** | Hosts the A2A agent. Kong signs each call to it with its IAM role, after checking the caller's Kong Identity token, so callers don't need AWS credentials. In Step 7 the agent itself calls the model and MCP tools through Kong. | Steps 3, 5, 7 |
 | **CloudWatch** | AgentCore runtime logs (`aws logs tail`). | Step 3 |
 | **Amazon Bedrock + Guardrails** | Step 6 routes OpenAI-style requests to Amazon Nova Micro, signed with Kong's IAM role. Guardrails permissions are granted (`bedrock:ApplyGuardrail`) but no guardrail is configured yet. | Step 6 |
-| **Secrets Manager** | IAM permissions are granted (`secretsmanager:GetSecretValue`). The reference architecture stores provider credentials and certificates here. | Step 2 (permissions only) |
+| **Secrets Manager** | Holds the Step 7 agent's Kong Identity client ID and secret. Only the agent's execution role may read that one secret. Kong's role is also granted `secretsmanager:GetSecretValue`, for the reference architecture's provider credentials and certificates, which this guide doesn't set up. | Step 7 (Step 2 permissions only) |
 | **MemoryDB for Redis** | In the reference architecture, the backend for semantic caching, semantic routing and semantic guards. Not deployed by this guide. | Architecture only |
 
 The [who-owns-what](#who-owns-what) table below splits these responsibilities between AWS, Kong and you.

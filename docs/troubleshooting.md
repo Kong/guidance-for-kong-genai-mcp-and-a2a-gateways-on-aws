@@ -288,3 +288,35 @@ Step 6's file re-declares the Step 5 auth strategy, so the model can reference i
 ### The AI Gateway's Overview tiles stay at 0
 
 Analytics take a few minutes to appear, and the Overview's Usage tiles count model calls only. Send some traffic to `/v1` (for example with `scripts/traffic.sh`), wait a few minutes and refresh. If only **Estimated cost** stays at `$0.00`, that's rounding. **Observability → Overview** shows the exact cost.
+
+## Step 7: Agent with model and tools
+
+### The tool call returns `Model produced invalid sequence as part of ToolUse`
+
+That error comes from Amazon Nova on Bedrock, not from Kong. Nova fails when a tool name contains a hyphen, so the guide's tools are named `check_inventory` and `list_orders`. If you renamed them, use underscores. The agent also uses `temperature` 0, which AWS's [Nova tool-use troubleshooting guide](https://docs.aws.amazon.com/nova/latest/userguide/tools-troubleshooting.html) recommends.
+
+### The agent answers, but the data plane log has no `tools/call`
+
+The model answered without using a tool, usually because of the error above. The log shows `tools/list` and one `/v1` call, then the `/a2a` response. Call `/v1` directly with the agent's tools to see the model's response.
+
+### The agent's log shows `AccessDeniedException` from `GetSecretValue`
+
+The runtime's role can't read the Step 7 secret. Check that `additionalPolicies` in `agentcorekong/agentcore/agentcore.json` lists the `inventory-agent-secret-kong314` policy ARN, and that `AGENT_SECRET_ARN` is the secret's full ARN, then run `agentcore deploy` again.
+
+### The agent's log shows `401` from `/v1` or `/mcp`
+
+The agent's token request used the wrong client ID or secret. Update the secret with Step 7's `put-secret-value` command, then redeploy so the agent reads it again.
+
+More: [Step 7 common problems](../7-connect-agent-model-tools.md#common-problems).
+
+## Step 8: Rate limit
+
+### All requests return `200`, never `429`
+
+The policy isn't attached yet. Run Step 8's `kongctl diff` again: it should show nothing left to change. Konnect needs about 10 seconds to push a change, so wait and rerun the loop.
+
+### `429` comes earlier than expected, or `verify.sh` fails on the agent check
+
+Every `/a2a` request in the last minute counts, including ones from `traffic.sh` or an earlier loop. Wait a minute and try again.
+
+More: [Step 8 common problems](../8-rate-limit.md#common-problems).

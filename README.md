@@ -86,7 +86,7 @@ When you finish Steps 1–8 you'll have:
 - A **connected agent**: the stub is replaced by an agent that answers inventory questions by calling the model at `/v1` and the MCP tools at `/mcp`, every hop through Kong with its own token (Step 7).
 - A **rate limit** on the agent: an AI Policy that lets 5 requests a minute through `/a2a` and answers the rest with `429` (Step 8).
 
-> **What this guide does *not* configure yet.** The architecture includes Bedrock Guardrails, MemoryDB for semantic caching, Secrets Manager for credentials and CloudWatch for Kong metrics. The IAM policy in Step 2 already grants the Guardrails and Secrets Manager permissions. This guide has **no deployment steps** for these pieces yet.
+> **What this guide does *not* configure yet.** The architecture includes Bedrock Guardrails, MemoryDB for semantic caching, Secrets Manager for Kong's own credentials and certificates, and CloudWatch for Kong metrics. The IAM policy in Step 2 already grants the Guardrails and Secrets Manager permissions. This guide has **no deployment steps** for these pieces yet. Secrets Manager is used once, in Step 7, to hold the agent's Kong Identity client secret.
 
 - Run [Clean up](#clean-up) when you're done.
 
@@ -350,14 +350,14 @@ Run everything in **one terminal session**, from the root of this repo. Later st
 
 ## Test and demo
 
-Once Steps 1–6 are done, [`scripts/verify.sh`](scripts/verify.sh) checks the whole setup in one command: the gateway answers; `/a2a`, `/mcp` and `/v1` reject missing and bad tokens; and with a valid token the agent answers, the MCP tools work and the model replies.
+Once Steps 1–6 are done, [`scripts/verify.sh`](scripts/verify.sh) checks the whole setup in one command: the gateway answers; `/a2a`, `/mcp` and `/v1` reject missing and bad tokens; and with a valid token the agent answers, the MCP tools work and the model replies. It works the same after Steps 7 and 8. After Step 7 the agent check takes 5 to 20 seconds, because the agent calls the model and the tools. After Step 8, run it at least a minute after any other `/a2a` traffic, or the rate limit can answer the agent check with `429`.
 
 ```bash
 export AWS_DOMAIN=<your domain> ISSUER_URL=<issuer URL> CLIENT_ID=<client ID> CLIENT_SECRET=<client secret>
 ./scripts/verify.sh
 ```
 
-To give the Konnect dashboards something to show, [`scripts/traffic.sh`](scripts/traffic.sh) sends a steady mix of accepted and rejected requests to all three (same variables, plus `ROUNDS`). It's demo traffic, not a test. After Step 8, some of its `/a2a` requests get `429` from the rate limit, which is expected and shows up in the dashboards too.
+To give the Konnect dashboards something to show, [`scripts/traffic.sh`](scripts/traffic.sh) sends a steady mix of accepted and rejected requests to all three (same variables, plus `ROUNDS`). It's demo traffic, not a test. After Step 7, each accepted `/a2a` request runs the real agent, so rounds are slower and spend a little Nova usage. After Step 8, some of its `/a2a` requests get `429` from the rate limit, which is expected and shows up in the dashboards too.
 
 [docs/demo.md](docs/demo.md) explains each check and gives a five-minute walk-through for showing the setup to someone else.
 
