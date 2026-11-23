@@ -452,7 +452,17 @@ You should see:
 agentcore deploy --region us-west-2
 ```
 
-The first deploy creates a target named `default` in `agentcore/aws-targets.json` from your current account and region, and bootstraps CDK in the account if it hasn't been. It takes about 5 to 10 minutes and ends with `Deploy to AWS Complete`. If it can't find credentials from an `aws login` session, export them first with `eval "$(aws configure export-credentials --format env)"`.
+The first deploy creates a target named `default` in `agentcore/aws-targets.json` from your current account and region, and bootstraps CDK in the account if it hasn't been. It takes about 5 to 10 minutes and ends with `Deploy to AWS Complete`. If it can't find credentials from an `aws login` session, export them first, then run the deploy again:
+
+```bash
+eval "$(aws configure export-credentials --format env)"
+```
+
+This copies your session into fixed environment variables that don't refresh. Use it only in the terminal for this step. Don't run `eksctl` or `helm` in that terminal afterward: once the copied keys expire, they fail with `ExpiredToken` even after you sign in again. To go back to your normal session, clear them:
+
+```bash
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_CREDENTIAL_EXPIRATION
+```
 
 ## Check the Status
 

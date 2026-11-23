@@ -148,16 +148,50 @@ agentcore --version
 command -v awscurl
 ```
 
-**2. Sign in to AWS.** Use the one that matches how you get AWS credentials.
+**2. Sign in to AWS.** Pick the option that matches where your AWS credentials come from. Some steps run for 15 to 20 minutes, so it matters whether your credentials can refresh themselves while a command runs.
+
+| Your credentials come from | Refreshes during long commands? | Use for this guide? |
+|---|---|---|
+| **A.** Signing in to the AWS console from the CLI (`aws login`) | Yes | Recommended |
+| **B.** IAM Identity Center (SSO) | Yes, until the SSO session ends | Yes |
+| **C.** An EC2 instance or CloudShell with an attached role | Yes | Yes |
+| **D.** Long-term access keys for an IAM user | They don't expire | Works, but less secure |
+| **E.** Keys pasted from somewhere else (the AWS access portal, another machine, a teammate) | No. They stop working when they expire, often after an hour | Avoid for Step 1 |
+
+**Option A: AWS console sign-in.** This opens a browser to sign in.
 
 ```bash
-# AWS console credentials
 aws login
+```
 
-# or IAM Identity Center (SSO)
+**Option B: IAM Identity Center (SSO).** Replace `<YOUR_PROFILE>` with your profile name. If you don't have one yet, run `aws configure sso` first.
+
+```bash
 aws sso login --profile <YOUR_PROFILE>
 export AWS_PROFILE=<YOUR_PROFILE>
 ```
+
+**Option C: EC2 instance or CloudShell.** Nothing to run. The attached role supplies credentials. Go to step 3.
+
+**Option D: long-term IAM user keys.** Enter the access key ID and secret access key when prompted.
+
+```bash
+aws configure
+```
+
+**Option E: pasted keys.** These are lines like `export AWS_ACCESS_KEY_ID=...`, `AWS_SECRET_ACCESS_KEY` and `AWS_SESSION_TOKEN`. They work, but they can't refresh. If one expires during `eksctl create cluster`, eksctl stops halfway with `ExpiredToken`. Use option A or B for Step 1 if you can.
+
+> **Keys in your shell win over everything else.** If `AWS_ACCESS_KEY_ID` is set in your terminal, the AWS CLI, eksctl and helm use it instead of your `aws login` or SSO session, even after it expires. To see if any are set, run:
+>
+> ```bash
+> env | grep '^AWS_'
+> ```
+>
+> If you're using option A, B or C and see `AWS_ACCESS_KEY_ID`, clear them:
+>
+> ```bash
+> unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN AWS_CREDENTIAL_EXPIRATION
+> ```
 
 **3. Confirm the sign-in worked.**
 
@@ -165,7 +199,7 @@ export AWS_PROFILE=<YOUR_PROFILE>
 aws sts get-caller-identity
 ```
 
-It should print your `UserId`, `Account` and `Arn`. If it prints `login session has expired, please reauthenticate` (or `Token has expired` for SSO), run step 2 again. Sessions expire, so expect to do this again partway through the guide. `eksctl`, `helm` and `kubectl` all fail with the same message when it happens.
+It should print your `UserId`, `Account` and `Arn`. If it prints `login session has expired, please reauthenticate` (or `Token has expired` for SSO), run step 2 again. Sessions expire, so expect to do this again partway through the guide. If it prints `ExpiredToken` instead, you have expired keys set in your shell (see the note under step 2). `eksctl`, `helm` and `kubectl` all fail with the same message when it happens.
 
 **4. Set the shell defaults the steps assume.**
 
@@ -178,21 +212,17 @@ echo "$AWS_ACCOUNT_ID"
 
 The account ID it prints is the value to use wherever a command says `<YOUR_AWS_ACCOUNT_ID>`. Run these in every new terminal window.
 
-**5. For tools that can't read an `aws login` session** (the AgentCore CLI's CDK deploy and `awscurl` in Step 3), export the session as plain environment variables:
+**5. Confirm the account can reach the services this guide uses.**
+
+EKS in `us-west-2`. An empty list is fine:
 
 ```bash
-eval "$(aws configure export-credentials --format env)"
+aws eks list-clusters --region us-west-2
 ```
 
-These exported credentials expire too. After you sign in again, run this line again.
-
-**6. Confirm the account can reach the services this guide uses.**
+Amazon Nova Micro on Bedrock, used in Step 6. A short reply means you have access:
 
 ```bash
-# EKS in us-west-2 (an empty list is fine)
-aws eks list-clusters --region us-west-2
-
-# Amazon Nova Micro on Bedrock (Step 6). A short reply means you have access.
 aws bedrock-runtime converse --region us-west-2 --model-id us.amazon.nova-micro-v1:0 \
   --messages '[{"role":"user","content":[{"text":"Say hi in five words"}]}]' \
   --query 'output.message.content[0].text' --output text
@@ -200,7 +230,7 @@ aws bedrock-runtime converse --region us-west-2 --model-id us.amazon.nova-micro-
 
 `AccessDeniedException` on the first command means your role can't use EKS. On the second, it means the model isn't enabled for the account in `us-west-2`.
 
-**7. Optional: if you already have a Konnect Personal Access Token**, check that it works against the US region. Otherwise you'll create one in Step 2.
+**6. Optional: if you already have a Konnect Personal Access Token**, check that it works against the US region. Otherwise you'll create one in Step 2.
 
 ```bash
 export PAT=<YOUR_PAT>
