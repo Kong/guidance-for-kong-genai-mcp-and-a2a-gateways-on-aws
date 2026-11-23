@@ -6,15 +6,19 @@ Every call this agent makes goes through the Kong AI Gateway:
 It gets a Kong Identity token (Step 5) and sends it on both, just like any other client.
 
 Environment variables (set in agentcore/agentcore.json under envVars):
-  KONG_URL       https://ai-dp.<your domain>
-  ISSUER_URL     the Kong Identity issuer URL from Step 5
-  CLIENT_ID      the Kong Identity client ID from Step 5
-  CLIENT_SECRET  the Kong Identity client secret from Step 5
+  KONG_URL          https://ai-dp.<your domain>
+  ISSUER_URL        the Kong Identity issuer URL from Step 5
+  AGENT_SECRET_ARN  the Secrets Manager secret that holds the Kong Identity client_id and client_secret
+
+The client secret itself is never in an environment variable. The agent reads it from
+Secrets Manager with its execution role, which may read only that one secret.
 """
 
+import json
 import os
 import time
 
+import boto3
 import httpx
 from bedrock_agentcore.runtime import serve_a2a
 from mcp.client.streamable_http import streamablehttp_client
@@ -25,8 +29,7 @@ from strands.tools.mcp import MCPClient
 
 KONG_URL = os.environ["KONG_URL"].rstrip("/")
 ISSUER_URL = os.environ["ISSUER_URL"].rstrip("/")
-CLIENT_ID = os.environ["CLIENT_ID"]
-CLIENT_SECRET = os.environ["CLIENT_SECRET"]
+AGENT_SECRET_ARN = os.environ["AGENT_SECRET_ARN"]
 
 SYSTEM_PROMPT = """
 You are the inventory assistant for a small online store.
@@ -36,18 +39,30 @@ Answer in one or two short sentences.
 """
 
 _token = {"value": None, "expires_at": 0.0}
+_client = {}
+
+
+def get_client_credentials() -> dict:
+    """Read the Kong Identity client ID and secret from Secrets Manager, once per process."""
+    if not _client:
+        region = AGENT_SECRET_ARN.split(":")[3]
+        secret = boto3.client("secretsmanager", region_name=region).get_secret_value(SecretId=AGENT_SECRET_ARN)
+        _client.update(json.loads(secret["SecretString"]))
+        print("[inventory-agent] read the Kong Identity client from Secrets Manager", flush=True)
+    return _client
 
 
 def get_token() -> str:
     """Get a Kong Identity access token with the client credentials grant, and reuse it until it nearly expires."""
     if _token["value"] and time.time() < _token["expires_at"] - 60:
         return _token["value"]
+    client = get_client_credentials()
     response = httpx.post(
         f"{ISSUER_URL}/oauth/token",
         data={
             "grant_type": "client_credentials",
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
+            "client_id": client["client_id"],
+            "client_secret": client["client_secret"],
             "scope": "scope1",
         },
         timeout=10,

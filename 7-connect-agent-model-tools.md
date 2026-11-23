@@ -12,7 +12,7 @@ Real agents do all three in one request. A user asks the agent a question, the a
 
 1. **Runs a small inventory API in the cluster** that returns real-looking stock and order data, so you can tell when the agent actually used a tool.
 2. **Points the Step 4 MCP tools at it**, in place of the echo backend.
-3. **Replaces the stub agent on AgentCore** with a [Strands](https://strandsagents.com/) agent that calls the `nova-micro` model at `/v1` and the inventory tools at `/mcp`, both through Kong, with its own Kong Identity token.
+3. **Replaces the stub agent on AgentCore** with a [Strands](https://strandsagents.com/) agent that calls the `nova-micro` model at `/v1` and the inventory tools at `/mcp`, both through Kong, with its own Kong Identity token. Its client secret goes in **AWS Secrets Manager**, readable only by the agent's IAM role.
 4. **Asks the agent a question through `/a2a`** and follows the request through all three routes.
 
 The request path:
@@ -35,8 +35,9 @@ you ──/a2a──► Kong ──► AgentCore: inventory agent
 
   If any say `MISSING`, re-run the `export` commands from the step that created them. `CACHE_TOKENS_SALT` must be the same value you used in Steps 5 and 6.
 - The `agentcorekong` project folder from Step 3 is in the root of this repo.
+- Your AWS identity can create Secrets Manager secrets and IAM policies.
 
-> **Tested.** This step was run end to end against the `kong/kong-ai-gateway:2.3.1` data plane, with the agent built on the AgentCore CLI's `a2a-python-strands` template (Strands `1.57`, `bedrock-agentcore` `1.24`).
+> **Tested.** This step was run end to end against the `kong/kong-ai-gateway:2.3.1` data plane, with the agent built on the AgentCore CLI's `a2a-python-strands` template (Strands `1.57`, `bedrock-agentcore` `1.24`). Keeping the client secret in Secrets Manager was added afterward and hasn't been re-run yet.
 
 ---
 
@@ -102,18 +103,53 @@ cp ../code/a2a/inventory-agent-pyproject.toml app/agent/pyproject.toml
 (cd app/agent && uv lock)
 ```
 
-Point the runtime at the new file, and give it the Kong URL and its Kong Identity client credentials as environment variables:
+### Store the agent's credentials in Secrets Manager
+
+The agent needs a Kong Identity client ID and secret to get tokens. Instead of putting the secret in the runtime's environment variables, where anyone who can read the runtime's settings would see it, store both in **AWS Secrets Manager**. The agent reads them at start-up with its own IAM role.
+
+Create the secret. It holds the Step 5 client's ID and secret as JSON:
 
 ```bash
-jq --arg kong "https://ai-dp.$AWS_DOMAIN" --arg iss "$ISSUER_URL" --arg id "$CLIENT_ID" --arg secret "$CLIENT_SECRET" \
+export AGENT_SECRET_ARN=$(aws secretsmanager create-secret --region us-west-2 \
+  --name kong-aws-ai/inventory-agent \
+  --description "Kong Identity client for the Step 7 inventory agent" \
+  --secret-string "$(jq -n --arg id "$CLIENT_ID" --arg s "$CLIENT_SECRET" '{client_id: $id, client_secret: $s}')" \
+  --query ARN --output text)
+echo "$AGENT_SECRET_ARN"
+```
+
+It prints an ARN ending in `secret:kong-aws-ai/inventory-agent-` and six random characters. If it says the secret already exists, get its ARN instead and update its value:
+
+```bash
+export AGENT_SECRET_ARN=$(aws secretsmanager describe-secret --region us-west-2 --secret-id kong-aws-ai/inventory-agent --query ARN --output text)
+aws secretsmanager put-secret-value --region us-west-2 --secret-id "$AGENT_SECRET_ARN" \
+  --secret-string "$(jq -n --arg id "$CLIENT_ID" --arg s "$CLIENT_SECRET" '{client_id: $id, client_secret: $s}')"
+```
+
+Create an IAM policy that allows reading that one secret and nothing else. The name ends in `-kong314`, like the guide's other IAM names, so [teardown](docs/teardown.md) finds it:
+
+```bash
+export AGENT_SECRET_POLICY_ARN=$(aws iam create-policy \
+  --policy-name inventory-agent-secret-kong314 \
+  --policy-document "$(jq -n --arg arn "$AGENT_SECRET_ARN" '{Version: "2012-10-17", Statement: [{Effect: "Allow", Action: "secretsmanager:GetSecretValue", Resource: $arn}]}')" \
+  --query Policy.Arn --output text)
+echo "$AGENT_SECRET_POLICY_ARN"
+```
+
+### Configure the runtime
+
+Point the runtime at the new file, give it the Kong URL, the issuer URL and the secret's ARN (not the secret) as environment variables, and attach the policy to its execution role with `additionalPolicies`. The AgentCore CLI's CDK deployment attaches it, so you don't edit the role by hand:
+
+```bash
+jq --arg kong "https://ai-dp.$AWS_DOMAIN" --arg iss "$ISSUER_URL" --arg secret "$AGENT_SECRET_ARN" --arg policy "$AGENT_SECRET_POLICY_ARN" \
   '.runtimes[0].entrypoint = "inventory_agent.py"
    | .runtimes[0].envVars = [
        {"name": "KONG_URL", "value": $kong},
        {"name": "ISSUER_URL", "value": $iss},
-       {"name": "CLIENT_ID", "value": $id},
-       {"name": "CLIENT_SECRET", "value": $secret}]' \
+       {"name": "AGENT_SECRET_ARN", "value": $secret}]
+   | .runtimes[0].additionalPolicies = [$policy]' \
   agentcore/agentcore.json > /tmp/ac.json && mv /tmp/ac.json agentcore/agentcore.json
-jq '.runtimes[0] | {entrypoint, envVars: [.envVars[].name]}' agentcore/agentcore.json
+jq '.runtimes[0] | {entrypoint, envVars: [.envVars[].name], additionalPolicies}' agentcore/agentcore.json
 ```
 
 You should see:
@@ -124,18 +160,23 @@ You should see:
   "envVars": [
     "KONG_URL",
     "ISSUER_URL",
-    "CLIENT_ID",
-    "CLIENT_SECRET"
+    "AGENT_SECRET_ARN"
+  ],
+  "additionalPolicies": [
+    "arn:aws:iam::<YOUR_AWS_ACCOUNT_ID>:policy/inventory-agent-secret-kong314"
   ]
 }
 ```
 
-> **About the client secret.** For this guide the agent reuses the Step 5 client, and the secret is stored as a runtime environment variable. `agentcorekong/` is git-ignored, so it isn't committed. In production, give each agent its own Kong Identity client and keep the secret in AWS Secrets Manager or AgentCore Identity.
+No client ID or secret appears in `agentcore.json` or in the runtime's settings in AWS.
+
+> **About the client.** For this guide the agent reuses the Step 5 client, so it and your `curl` commands share one identity. In production, give each agent its own Kong Identity client, so Kong can limit or revoke it on its own. Secrets Manager can also [rotate](https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotating-secrets.html) the secret without a redeploy. [AgentCore Identity](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/identity.html) goes one step further: AWS fetches the tokens, and the agent never sees the secret at all.
 
 ### What the agent does
 
-[`code/a2a/inventory_agent.py`](code/a2a/inventory_agent.py) is about 60 lines:
+[`code/a2a/inventory_agent.py`](code/a2a/inventory_agent.py) is about 70 lines:
 
+- `get_client_credentials()` reads the client ID and secret from Secrets Manager once, using the runtime's IAM role.
 - `get_token()` gets a Kong Identity token with the client credentials grant, the same call you've run by hand since Step 5, and reuses it until it nearly expires.
 - The **model** is Strands' `OpenAIModel` pointed at `https://ai-dp.<your domain>/v1` with `model_id="nova-micro"`. The OpenAI client sends the token as `Authorization: Bearer`, which is what Kong checks.
 - The **tools** come from Strands' `MCPClient`, connected to `https://ai-dp.<your domain>/mcp` with the same token. The agent discovers `check_inventory` and `list_orders` from Kong at runtime. Nothing about them is hard-coded in the agent.
@@ -224,7 +265,8 @@ Asking the agent through `/a2a` returns an answer with the inventory API's facts
 
 ## Common problems
 
-- **The answer says it couldn't check, or gives made-up numbers.** The agent didn't reach the tools. Check the agent's logs for a `401` from `/mcp`, which means a wrong `CLIENT_ID` or `CLIENT_SECRET` in `agentcore.json`. Re-run the `jq` command above with the right values exported, then `agentcore deploy` again.
+- **The agent's log shows `AccessDeniedException` from `GetSecretValue`.** The runtime's role can't read the secret. Check that `additionalPolicies` in `agentcore.json` lists the policy ARN, then `agentcore deploy` again. Check also that `AGENT_SECRET_ARN` is the secret's full ARN.
+- **The answer says it couldn't check, or gives made-up numbers.** The agent didn't reach the tools. Check the agent's logs for a `401` from `/mcp`, which means the secret holds the wrong client ID or secret. Run the `put-secret-value` command above with the right values exported. The agent reads the secret when it starts, so redeploy or wait for a new session.
 - **The agent returns an error, and its log shows a `401` from `/v1`.** Same cause: the token request failed or used the wrong client. Check that `ISSUER_URL` in `agentcore.json` matches `echo $ISSUER_URL`.
 - **The agent's log, or a direct `/v1` call, shows `Model produced invalid sequence as part of ToolUse`.** That error comes from Nova on Bedrock, not from Kong. Nova fails on tool names with hyphens, so the tools are named `check_inventory` and `list_orders`. If you named your own tools with hyphens, rename them. The agent also sets `temperature` to `0`, which AWS's [Nova tool-use troubleshooting guide](https://docs.aws.amazon.com/nova/latest/userguide/tools-troubleshooting.html) recommends.
 - **The data plane log shows `/mcp` `tools/list` and one `/v1` call, but no `tools/call`.** The model answered without using a tool, usually because of the error above. Call `/v1` directly with the agent's tools to see the model's response.
@@ -240,6 +282,8 @@ Remove the inventory API:
 ```bash
 kubectl delete -f code/inventory/inventory-api.yaml --ignore-not-found
 ```
+
+The secret and its policy are removed in [docs/teardown.md](docs/teardown.md) (sections 4 and 7), after the runtime that uses them.
 
 To go back to the Step 3 stub agent, repeat [Create the project](3-a2a-agent-gateway-agentcore.md#create-the-project) from the `cp` command onward, then deploy. [docs/teardown.md](docs/teardown.md) removes everything else, including the AgentCore runtime.
 

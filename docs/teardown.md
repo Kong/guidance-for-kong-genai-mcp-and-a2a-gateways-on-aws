@@ -94,6 +94,14 @@ aws cloudformation delete-stack --region us-west-2 --stack-name AgentCore-agentc
 aws cloudformation wait stack-delete-complete --region us-west-2 --stack-name AgentCore-agentcorekong-default && echo "stack deleted"
 ```
 
+Delete the Step 7 secret, which held the agent's Kong Identity client. `--force-delete-without-recovery` deletes it right away instead of after a recovery window, and can't be undone:
+
+```bash
+aws secretsmanager delete-secret --region us-west-2 --secret-id kong-aws-ai/inventory-agent --force-delete-without-recovery
+```
+
+If it says the secret can't be found, you didn't do Step 7, or it's already gone. Its IAM policy, `inventory-agent-secret-kong314`, is deleted in section 7.
+
 Optionally, delete the runtime's log groups too. They outlive the runtime and cost only pennies a month, but they're leftovers. List them first:
 
 ```bash
@@ -160,7 +168,7 @@ done
 
 If nothing prints under "role", `eksctl` already removed the roles in section 5. A policy that's still attached to something won't delete, which protects anything else using it.
 
-> **No suffix?** If you kept the guide's names, delete them one by one instead: the roles `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role`, then the policies `AWSLoadBalancerControllerIAMPolicy-kong314` and `bedrock-policy-kong314`. In a shared account, only delete names you created. Don't delete an unsuffixed `AWSLoadBalancerControllerIAMPolicy`: it existed before this guide and belongs to someone else.
+> **No suffix?** If you kept the guide's names, delete them one by one instead: the roles `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role`, then the policies `AWSLoadBalancerControllerIAMPolicy-kong314`, `bedrock-policy-kong314` and `inventory-agent-secret-kong314` (Step 7). In a shared account, only delete names you created. Don't delete an unsuffixed `AWSLoadBalancerControllerIAMPolicy`: it existed before this guide and belongs to someone else.
 
 ## 8. Domain and hosted zone (optional)
 
@@ -184,7 +192,7 @@ Without the zone, the domain stops resolving.
 ## 9. Credentials and local files
 
 - **Konnect personal access token:** revoke it in Konnect (your initials → **Personal Access Tokens**), unless you'll use it again soon. It may also be in a kongctl profile (`~/.config/kongctl/config.yaml`).
-- **Working folders:** the AgentCore project (`agentcorekong`) and `mcp-headers.txt` from the steps. After Step 7, `agentcorekong/agentcore/agentcore.json` holds the Kong Identity client secret, so delete that folder. Deleting the authorization server in section 2 already makes the secret useless.
+- **Working folders:** the AgentCore project (`agentcorekong`) and `mcp-headers.txt` from the steps. None of them hold secrets: the Step 7 agent's client secret is in Secrets Manager, and `agentcore.json` only holds the secret's ARN. You can delete them.
 
   ```bash
   rm -rf agentcorekong mcp-headers.txt

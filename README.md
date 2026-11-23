@@ -330,7 +330,7 @@ Run everything in **one terminal session**, from the root of this repo. Later st
 
 **Why this step.** Steps 3, 4 and 6 are three separate front doors, and the Step 3 agent is a stub that never calls the model or the tools. Real agents use both in one request. This step shows that flow, with every hop going through Kong.
 
-**What it does.** Runs a small inventory API in the cluster and points the Step 4 MCP tools at it. Replaces the stub agent on AgentCore with a Strands agent that calls `nova-micro` at `/v1` and the inventory tools at `/mcp`, both through Kong with a Kong Identity token. Then asks it a question through `/a2a`.
+**What it does.** Runs a small inventory API in the cluster and points the Step 4 MCP tools at it. Replaces the stub agent on AgentCore with a Strands agent that calls `nova-micro` at `/v1` and the inventory tools at `/mcp`, both through Kong with a Kong Identity token. The agent's client secret is kept in AWS Secrets Manager, readable only by the agent's IAM role. Then asks it a question through `/a2a`.
 
 **Verify.** Asking "Is KONG-456 in stock? And how many orders are pending?" through `/a2a` returns the inventory API's facts (KONG-456 out of stock, 2 pending orders), and the data plane log shows `/a2a`, `/v1` and `/mcp` requests for that one question.
 
@@ -372,7 +372,8 @@ In short, roughly in reverse order:
 - **The AgentCore runtime** and its CloudFormation stack (Step 3).
 - **The AWS Load Balancer Controller and the EKS cluster** `kong314` (Step 1), the largest ongoing charges.
 - **The ACM certificate** and its validation record (Step 1).
-- **IAM policies and roles**: `AWSLoadBalancerControllerIAMPolicy-kong314`, `bedrock-policy-kong314`, `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role` (or the suffixed names you used).
+- **The Step 7 secret** in Secrets Manager (`kong-aws-ai/inventory-agent`).
+- **IAM policies and roles**: `AWSLoadBalancerControllerIAMPolicy-kong314`, `bedrock-policy-kong314`, `inventory-agent-secret-kong314`, `AWSLoadBalancerControllerIAMRole-kong314` and `kaigateway-aws-podid-role` (or the suffixed names you used).
 - **Optionally, the Route 53 hosted zone and domain** (Step 1).
 
 Check the Billing console a day later to confirm nothing is still running.
