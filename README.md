@@ -332,7 +332,7 @@ Run everything in **one terminal session**, from the root of this repo. Later st
 
 **What it does.** Runs a small inventory API in the cluster and points the Step 4 MCP tools at it. Replaces the stub agent on AgentCore with a Strands agent that calls `nova-micro` at `/v1` and the inventory tools at `/mcp`, both through Kong with a Kong Identity token. Then asks it a question through `/a2a`.
 
-**Verify.** Asking "Is KONG-456 in stock? And how many orders are pending?" through `/a2a` returns the restock date and pending order count from the inventory API, and the data plane log shows `/a2a`, `/v1` and `/mcp` requests for that one question.
+**Verify.** Asking "Is KONG-456 in stock? And how many orders are pending?" through `/a2a` returns the inventory API's facts (KONG-456 out of stock, 2 pending orders), and the data plane log shows `/a2a`, `/v1` and `/mcp` requests for that one question.
 
 **Common problems.** Wrong client credentials in the agent's environment variables (a `401` in the agent's log). The old Step 3 lockfile blocking the deploy. See [Common problems](7-connect-agent-model-tools.md#common-problems) in Step 7.
 

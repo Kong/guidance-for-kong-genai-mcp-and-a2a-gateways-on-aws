@@ -36,7 +36,7 @@ you ──/a2a──► Kong ──► AgentCore: inventory agent
   If any say `MISSING`, re-run the `export` commands from the step that created them. `CACHE_TOKENS_SALT` must be the same value you used in Steps 5 and 6.
 - The `agentcorekong` project folder from Step 3 is in the root of this repo.
 
-> **Not yet tested end to end.** The agent code follows the AgentCore CLI's own `a2a-python-strands` template (Strands `1.57`, `bedrock-agentcore` `1.24`). Run each checkpoint before moving on.
+> **Tested.** This step was run end to end against the `kong/kong-ai-gateway:2.3.1` data plane, with the agent built on the AgentCore CLI's `a2a-python-strands` template (Strands `1.57`, `bedrock-agentcore` `1.24`).
 
 ---
 
@@ -191,12 +191,12 @@ curl -s -X POST https://ai-dp.$AWS_DOMAIN/a2a -H "Authorization: Bearer $TOKEN" 
 The first call can take 10 to 20 seconds while the runtime starts. You should get an answer like:
 
 ```
-KONG-456 (Kong sticker pack) is out of stock until 2026-12-15, and there are 2 pending orders.
+KONG-456 is currently out of stock. There are 2 pending orders.
 ```
 
-The model can't know those facts. `0` units, `2026-12-15` and `2` pending orders only exist in the inventory API, so the answer proves the agent called both tools through Kong.
+The wording varies from run to run, and Nova sometimes adds the restock date (`2026-12-15`). The facts don't vary: KONG-456 out of stock and `2` pending orders only exist in the inventory API. Ask Nova the same question without tools, the way Step 6 does, and it tells you to check the retailer's website instead.
 
-> **Checkpoint: one request crossed all three routes.** The answer includes the restock date and the pending order count from the inventory API.
+> **Checkpoint: one request crossed all three routes.** The answer says KONG-456 is out of stock and there are 2 pending orders.
 
 ## Follow the request
 
@@ -206,11 +206,13 @@ Watch the agent's side in its logs. Look for `got a new Kong Identity token` and
 aws logs tail "/aws/bedrock-agentcore/runtimes/$AGENTCORE_IDENTIFIER-DEFAULT" --since 5m --region us-west-2
 ```
 
-Watch Kong's side in the data plane log. Look for your `/a2a` request, then the agent's `/v1` and `/mcp` requests, all within the same few seconds:
+Watch Kong's side in the data plane log:
 
 ```bash
-kubectl logs -n kong deploy/kong-aws-ai-dp --since=5m | grep -E '/(a2a|v1|mcp)'
+kubectl logs -n kong deploy/kong-aws-ai-dp --since=5m | grep -E 'tools/call|POST /(a2a|v1|mcp)'
 ```
+
+Within the same few seconds, look for your `POST /a2a`, then the agent's first `POST /v1/chat/completions` (Nova asks for tools), `tools/call` lines for `check_inventory` and `list_orders`, and a final `POST /v1/chat/completions` (Nova writes the answer). The `GET /mcp` lines with `405` are harmless: the MCP client checks for an optional event stream that Kong doesn't offer.
 
 In Konnect, the AI Gateway's **Overview** shows the new model requests and tokens a few minutes later. Those tokens were spent by the agent, not by you, and they're counted against the same Kong Identity client.
 
@@ -218,7 +220,7 @@ In Konnect, the AI Gateway's **Overview** shows the new model requests and token
 
 ## Verify
 
-Asking the agent through `/a2a` returns an answer with the inventory API's numbers (out of stock until `2026-12-15`, `2` pending orders), and the data plane log shows `/a2a`, `/v1` and `/mcp` requests for that one question. The Step 4 to 6 checks still pass: `/mcp` and `/v1` still require a token.
+Asking the agent through `/a2a` returns an answer with the inventory API's facts (KONG-456 out of stock, `2` pending orders), and the data plane log shows `/a2a`, `/v1` and `tools/call` requests for that one question. The Step 4 to 6 checks still pass: `/mcp` and `/v1` still require a token.
 
 ## Common problems
 
