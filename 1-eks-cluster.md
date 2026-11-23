@@ -126,23 +126,25 @@ Make sure you have a Registered Domain, so we can issue a Digital Certificate to
 
 If you already have a domain with a **public** hosted zone in Route 53, skip the registration commands below: set `AWS_DOMAIN` to it and continue at [AWS Certificate Manager](#aws-certificate-manager).
 
-To find which domains your account already has, list its public hosted zones and the domains registered through Route 53:
+To find which domains your account already has, first list its public hosted zones. These are what the ACM certificate needs:
 
-```
-# Public hosted zones (this is what the ACM certificate needs)
+```bash
 aws route53 list-hosted-zones \
   --query "HostedZones[?Config.PrivateZone==\`false\`].[Name,Id]" --output table
+```
 
-# Domains registered through Route 53 (this API only works in us-east-1)
+Then list the domains registered through Route 53. This API only works in `us-east-1`. Domains are global, so this doesn't affect the `us-west-2` resources:
+
+```bash
 aws route53domains list-domains --region us-east-1 \
   --query "Domains[].[DomainName,Expiry]" --output table
 ```
 
-Pick a domain from the first list, without the trailing dot, and skip any whose expiry date has passed. A domain that appears only in the first list is registered somewhere else, which is fine as long as the check below passes. If the first list is empty, go to [Registering a new domain](#registering-a-new-domain).
+Pick a domain from the first list, without the trailing dot, and skip any whose expiry date has passed. Domains in both lists are the safest choice. A domain that appears only in the first list is registered somewhere else, or not registered at all any more, so it must pass the check below. If the first list is empty, go to [Registering a new domain](#registering-a-new-domain).
 
-Then check that the internet actually reaches that zone, because ACM validation silently waits forever otherwise:
+Then check that the internet actually reaches that zone, because ACM validation silently waits forever otherwise. Replace `<your domain>` with your domain before you press Enter (for example `export AWS_DOMAIN=example.com`):
 
-```
+```bash
 export AWS_DOMAIN=<your domain>
 dig NS $AWS_DOMAIN @8.8.8.8 +short
 aws route53 get-hosted-zone --id $(aws route53 list-hosted-zones \
@@ -211,22 +213,25 @@ This keeps the ARN of the certificate you just requested. Looking it up later by
 
 #### Update the Route 53 Domain
 
-You need to update the Route 53 domain with the CNAME Record Name and Record Value that AWS ACM generated for DNS validation of your certificate. ACM can take a few seconds to generate them, so if the next commands print empty values, wait and re-run them.
+You need to update the Route 53 domain with the CNAME Record Name and Record Value that AWS ACM generated for DNS validation of your certificate. ACM takes a few seconds to generate them after the request. If you read them too soon, you get `None` (or `null`), and the Route 53 command below fails with `RRSet with DNS name null. is not permitted`.
+
+Wait until ACM has generated the record. This checks every 5 seconds and usually finishes in under 30:
+
+```bash
+until [ "$(aws acm describe-certificate --certificate-arn $CERTIFICATE_ARN --region us-west-2 --query 'Certificate.DomainValidationOptions[0].ResourceRecord.Name' --output text)" != "None" ]; do echo "Waiting for ACM..."; sleep 5; done
+```
 
 Get both CNAME Record Name and Record Value:
-```
-export RESOURCE_RECORD_NAME=$(aws acm describe-certificate \
-  --certificate-arn $CERTIFICATE_ARN \
-  --query "Certificate.DomainValidationOptions" \
-  --region us-west-2 | jq -r '.[].ResourceRecord.Name')
+
+```bash
+export RESOURCE_RECORD_NAME=$(aws acm describe-certificate --certificate-arn $CERTIFICATE_ARN --region us-west-2 \
+  --query "Certificate.DomainValidationOptions[0].ResourceRecord.Name" --output text)
+export RESOURCE_RECORD_VALUE=$(aws acm describe-certificate --certificate-arn $CERTIFICATE_ARN --region us-west-2 \
+  --query "Certificate.DomainValidationOptions[0].ResourceRecord.Value" --output text)
+echo "$RESOURCE_RECORD_NAME -> $RESOURCE_RECORD_VALUE"
 ```
 
-```
-export RESOURCE_RECORD_VALUE=$(aws acm describe-certificate \
-  --certificate-arn $CERTIFICATE_ARN \
-  --query "Certificate.DomainValidationOptions" \
-  --region us-west-2 | jq -r '.[].ResourceRecord.Value')
-```
+It should print something like `_abc123.<your domain>. -> _xyz456.acm-validations.aws.`. If either side says `None`, run the wait command again first.
 
 Get the Hosted Zone Id:
 ```
@@ -291,6 +296,7 @@ Keep this terminal open. Step 2 uses the `AWS_DOMAIN`, `CERTIFICATE_ARN` and `HO
 
 ## Common problems
 
+- **`change-resource-record-sets` fails with `RRSet with DNS name null. is not permitted`.** `RESOURCE_RECORD_NAME` was read before ACM generated it. Run the wait command and the two exports under [Update the Route 53 Domain](#update-the-route-53-domain) again, check the `echo` output, then re-run the Route 53 command.
 - **The certificate stays `PENDING_VALIDATION`.** ACM can't see the CNAME yet. Check that the domain registration operation has finished (the `get-operation-detail` command), that the CNAME was created in the right hosted zone, and that the domain is delegated to that zone (the `dig NS` check under [Using a domain you already have](#using-a-domain-you-already-have)). `dig +short CNAME $RESOURCE_RECORD_NAME @8.8.8.8` must return the validation value.
 - **`eksctl create cluster` stopped with an error, or the node stays `NotReady`.** The cluster was only partly created, often because AWS credentials expired during the run. See [`eksctl create cluster` stopped partway](docs/troubleshooting.md#eksctl-create-cluster-stopped-partway).
 - **`helm install` says it can't find the `eks` repository.** Run the `helm repo add eks ...` command above first.
