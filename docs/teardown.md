@@ -10,7 +10,7 @@ This page removes everything the guide creates, in an order that avoids leftover
 
 ## 1. AI Gateway, data plane, echo backend and inventory API (Steps 2, 4 and 7)
 
-Delete the data plane first (this also deletes its NLB), then the AI Gateway. The Kong Operator removes the gateway from Konnect when its resource is deleted, together with its agent, MCP server, model, provider and auth strategy. Do this while the operator is still running.
+Delete the data plane first (this also deletes its NLB), then the AI Gateway. The Kong Operator removes the gateway from Konnect when its resource is deleted, together with its agent, MCP server, model, provider, auth strategy and the Step 8 rate-limit policy. Do this while the operator is still running.
 
 ```bash
 kubectl -n kong delete service,deployment httpbin --ignore-not-found
@@ -70,7 +70,7 @@ kubectl delete namespace kong kong-system --ignore-not-found
 
 If `kubectl delete namespace kong` hangs for more than 2 minutes, a Kong resource still has a finalizer the operator didn't clear. Press Ctrl+C, list what's left with `kubectl api-resources --verbs=list --namespaced -o name | xargs -n1 kubectl get -n kong --ignore-not-found --show-kind`, and delete it in Konnect by hand.
 
-## 4. AgentCore runtime (Step 3)
+## 4. AgentCore runtime (Steps 3 and 7)
 
 Run this in the AgentCore project folder (`agentcorekong`). First empty the project, and check that it's empty:
 
@@ -92,6 +92,18 @@ The runtime list should print nothing. If the stack list still shows `AgentCore-
 ```bash
 aws cloudformation delete-stack --region us-west-2 --stack-name AgentCore-agentcorekong-default
 aws cloudformation wait stack-delete-complete --region us-west-2 --stack-name AgentCore-agentcorekong-default && echo "stack deleted"
+```
+
+Optionally, delete the runtime's log groups too. They outlive the runtime and cost only pennies a month, but they're leftovers. List them first:
+
+```bash
+aws logs describe-log-groups --region us-west-2 --log-group-name-prefix /aws/bedrock-agentcore/runtimes/agentcorekong --query 'logGroups[].logGroupName' --output text
+```
+
+Then delete each one it lists:
+
+```bash
+for g in $(aws logs describe-log-groups --region us-west-2 --log-group-name-prefix /aws/bedrock-agentcore/runtimes/agentcorekong --query 'logGroups[].logGroupName' --output text); do aws logs delete-log-group --region us-west-2 --log-group-name "$g" && echo "deleted $g"; done
 ```
 
 The CDK bootstrap stack (`CDKToolkit`) was created on the first deploy if your account didn't have one. Leave it unless you know nothing else in the account uses CDK. Deleting it also requires emptying its S3 bucket first.
@@ -172,7 +184,13 @@ Without the zone, the domain stops resolving.
 ## 9. Credentials and local files
 
 - **Konnect personal access token:** revoke it in Konnect (your initials → **Personal Access Tokens**), unless you'll use it again soon. It may also be in a kongctl profile (`~/.config/kongctl/config.yaml`).
-- **Working folders:** the AgentCore project and `mcp-headers.txt` from the steps. None of them hold secrets, but you can delete them.
+- **Working folders:** the AgentCore project (`agentcorekong`) and `mcp-headers.txt` from the steps. After Step 7, `agentcorekong/agentcore/agentcore.json` holds the Kong Identity client secret, so delete that folder. Deleting the authorization server in section 2 already makes the secret useless.
+
+  ```bash
+  rm -rf agentcorekong mcp-headers.txt
+  ```
+
+  Run it from the root of this repo.
 
 ## Check that nothing is still running
 
