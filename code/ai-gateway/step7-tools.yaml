@@ -39,7 +39,7 @@ ai_gateway_mcp_servers:
       server:
         timeout: 60000
     tools:
-      - name: check-inventory
+      - name: check_inventory
         description: Check how many units of a product are in stock, by SKU.
         method: GET
         path: /mcp/inventory
@@ -50,7 +50,7 @@ ai_gateway_mcp_servers:
             description: The product SKU to look up.
             schema:
               type: string
-      - name: list-orders
+      - name: list_orders
         description: List recent orders, optionally filtered by status.
         method: GET
         path: /mcp/orders

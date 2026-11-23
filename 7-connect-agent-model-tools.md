@@ -1,6 +1,6 @@
 # Step 7: Connect the agent to the model and tools
 
-[← Step 6](6-llm-gateway-bedrock.md) · **Step 7** · [README →](README.md)
+[← Step 6](6-llm-gateway-bedrock.md) · **Step 7** · [Step 8 →](8-rate-limit.md)
 
 ## Why this step
 
@@ -20,7 +20,7 @@ The request path:
 ```
 you ──/a2a──► Kong ──► AgentCore: inventory agent
                          ├──/v1──► Kong ──► Amazon Nova Micro      (what should I do?)
-                         ├──/mcp─► Kong ──► inventory API           (check-inventory, list-orders)
+                         ├──/mcp─► Kong ──► inventory API           (check_inventory, list_orders)
                          └──/v1──► Kong ──► Amazon Nova Micro      (write the answer)
 ```
 
@@ -86,7 +86,7 @@ Then check a SKU:
 curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: $MCP_SESSION_ID" \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-456"}}}'
+  --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"check_inventory","arguments":{"query_sku":"KONG-456"}}}'
 ```
 
 > **Checkpoint: the tools return real data.** The result's `content` includes `"in_stock": 0` and `"restock_date": "2026-12-15"` for the Kong sticker pack, not an echo of the request.
@@ -138,7 +138,7 @@ You should see:
 
 - `get_token()` gets a Kong Identity token with the client credentials grant, the same call you've run by hand since Step 5, and reuses it until it nearly expires.
 - The **model** is Strands' `OpenAIModel` pointed at `https://ai-dp.<your domain>/v1` with `model_id="nova-micro"`. The OpenAI client sends the token as `Authorization: Bearer`, which is what Kong checks.
-- The **tools** come from Strands' `MCPClient`, connected to `https://ai-dp.<your domain>/mcp` with the same token. The agent discovers `check-inventory` and `list-orders` from Kong at runtime. Nothing about them is hard-coded in the agent.
+- The **tools** come from Strands' `MCPClient`, connected to `https://ai-dp.<your domain>/mcp` with the same token. The agent discovers `check_inventory` and `list_orders` from Kong at runtime. Nothing about them is hard-coded in the agent.
 - `serve_a2a` publishes it as an A2A agent on AgentCore, like the Step 3 template.
 
 The agent never talks to Bedrock or the inventory API directly. It only knows Kong's URL.
@@ -224,7 +224,8 @@ Asking the agent through `/a2a` returns an answer with the inventory API's numbe
 
 - **The answer says it couldn't check, or gives made-up numbers.** The agent didn't reach the tools. Check the agent's logs for a `401` from `/mcp`, which means a wrong `CLIENT_ID` or `CLIENT_SECRET` in `agentcore.json`. Re-run the `jq` command above with the right values exported, then `agentcore deploy` again.
 - **The agent returns an error, and its log shows a `401` from `/v1`.** Same cause: the token request failed or used the wrong client. Check that `ISSUER_URL` in `agentcore.json` matches `echo $ISSUER_URL`.
-- **The agent's log shows an error from `/v1` about tools or tool use.** Kong passes the tool definitions to Bedrock. Check the data plane log for the Bedrock error, and that the Step 6 model call still works.
+- **The agent's log, or a direct `/v1` call, shows `Model produced invalid sequence as part of ToolUse`.** That error comes from Nova on Bedrock, not from Kong. Nova fails on tool names with hyphens, so the tools are named `check_inventory` and `list_orders`. If you named your own tools with hyphens, rename them. The agent also sets `temperature` to `0`, which AWS's [Nova tool-use troubleshooting guide](https://docs.aws.amazon.com/nova/latest/userguide/tools-troubleshooting.html) recommends.
+- **The data plane log shows `/mcp` `tools/list` and one `/v1` call, but no `tools/call`.** The model answered without using a tool, usually because of the error above. Call `/v1` directly with the agent's tools to see the model's response.
 - **`agentcore deploy` fails on dependencies.** The lockfile still has the Step 3 pins. Run `(cd app/agent && uv lock)` again from `agentcorekong`, then deploy.
 - **The tool call returns `unknown sku`.** The inventory API only knows `KONG-123`, `KONG-456` and `AWS-789`. Ask about one of those.
 - **The `curl` prints nothing.** The response had a different shape than expected. Run the same `curl` without the `jq` filter to see the raw response, which includes any error.
@@ -240,4 +241,4 @@ kubectl delete -f code/inventory/inventory-api.yaml --ignore-not-found
 
 To go back to the Step 3 stub agent, repeat [Create the project](3-a2a-agent-gateway-agentcore.md#create-the-project) from the `cp` command onward, then deploy. [docs/teardown.md](docs/teardown.md) removes everything else, including the AgentCore runtime.
 
-[← Step 6](6-llm-gateway-bedrock.md) · **Step 7** · [README →](README.md)
+[← Step 6](6-llm-gateway-bedrock.md) · **Step 7** · [Step 8 →](8-rate-limit.md)

@@ -12,7 +12,7 @@ The MCP Gateway pattern puts Kong between agents and tools. Agents talk MCP to K
 
 1. **Explains** the MCP flow: agents in AgentCore, MCP servers and tools, and the governance around them.
 2. **Runs a small echo API in the cluster** ([go-httpbin](https://github.com/mccutchen/go-httpbin)). It returns whatever request it receives, so you can see exactly what Kong sent when an agent called a tool.
-3. **Declares an MCP Server on the AI Gateway** at `https://ai-dp.<your domain>/mcp`. In `conversion-listener` mode it turns two REST endpoints into two MCP tools: `check-inventory` and `list-orders`.
+3. **Declares an MCP Server on the AI Gateway** at `https://ai-dp.<your domain>/mcp`. In `conversion-listener` mode it turns two REST endpoints into two MCP tools: `check_inventory` and `list_orders`.
 4. **Calls it like an MCP client would.** You initialize a session, list the tools and call one.
 
 Until Step 5 adds a token check, `/mcp` accepts calls from anyone who knows the URL. The tools only reach the echo API, so nothing sensitive is exposed.
@@ -216,8 +216,9 @@ It runs in the cluster rather than on the public internet because a gateway that
 - `config.url` is the REST API behind the tools, `http://httpbin.kong.svc.cluster.local:8080/anything`;
 - `config.route.paths` publishes it at `/mcp`, the endpoint agents connect to;
 - each entry under `tools` becomes one MCP tool: its description tells the agent what it does, and its `method`, `path` and `parameters` tell Kong which REST call to make.
+- tool names use underscores (`check_inventory`), not hyphens. Some models, including Amazon Nova, fail with `Model produced invalid sequence as part of ToolUse` when a tool name has a hyphen.
 
-The tool paths start with `/mcp/` because they include the route's path. Kong strips `/mcp` before calling the upstream, so `check-inventory` becomes `GET http://httpbin.kong.svc.cluster.local:8080/anything/inventory?sku=...`.
+The tool paths start with `/mcp/` because they include the route's path. Kong strips `/mcp` before calling the upstream, so `check_inventory` becomes `GET http://httpbin.kong.svc.cluster.local:8080/anything/inventory?sku=...`.
 
 ```bash
 kongctl diff --mode apply -f code/ai-gateway/step4-mcp.yaml --pat "$PAT"
@@ -260,7 +261,7 @@ curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   --data '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
 ```
 
-The result lists `check-inventory` and `list-orders`, each with its description and an `inputSchema` built from the `parameters` in the YAML file. This is exactly what an agent sees when it asks Kong which tools exist.
+The result lists `check_inventory` and `list_orders`, each with its description and an `inputSchema` built from the `parameters` in the YAML file. This is exactly what an agent sees when it asks Kong which tools exist.
 
 Look at the argument names in each `inputSchema`: Kong prefixes every parameter with where it goes in the REST call, so `sku` (a query parameter) becomes **`query_sku`** and `status` becomes **`query_status`**. Tool calls must use those names.
 
@@ -271,7 +272,7 @@ curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $MCP_SESSION_ID" \
-  --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-123"}}}'
+  --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check_inventory","arguments":{"query_sku":"KONG-123"}}}'
 ```
 
 The result's `content` holds httpbin's echo of the REST call Kong made, with `"isError": false`. Look for `"url": "http://httpbin.kong.svc.cluster.local:8080/anything/inventory?sku=KONG-123"` and `"args": {"sku": ["KONG-123"]}` (go-httpbin shows query values as lists). That proves the agent's MCP tool call became a normal REST request, made and logged by Kong.
@@ -283,7 +284,7 @@ curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $MCP_SESSION_ID" \
-  --data '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list-orders","arguments":{"query_status":"shipped"}}}'
+  --data '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"list_orders","arguments":{"query_status":"shipped"}}}'
 ```
 
 ## Point a real agent at it
@@ -294,7 +295,7 @@ Any MCP client that supports the **Streamable HTTP** transport can use `https://
 
 ## Verify
 
-The `tools/list` call returns `check-inventory` and `list-orders`, and the `tools/call` call returns httpbin's echo showing `/anything/inventory?sku=KONG-123`. Step 3's `/a2a` still answers.
+The `tools/list` call returns `check_inventory` and `list_orders`, and the `tools/call` call returns httpbin's echo showing `/anything/inventory?sku=KONG-123`. Step 3's `/a2a` still answers.
 
 ## Common problems
 

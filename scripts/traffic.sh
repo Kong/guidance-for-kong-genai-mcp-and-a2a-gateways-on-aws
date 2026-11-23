@@ -53,7 +53,7 @@ get_token() {
 A2A='{"jsonrpc":"2.0","id":"1","method":"message/send","params":{"message":{"kind":"message","messageId":"msg-001","role":"user","parts":[{"kind":"text","text":"hi"}]}}}'
 MCP_HDRS=(-H "Content-Type: application/json" -H "Accept: application/json, text/event-stream")
 MCP_INIT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"traffic","version":"1.0"}}}'
-MCP_CALL='{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-123"}}}'
+MCP_CALL='{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check_inventory","arguments":{"query_sku":"KONG-123"}}}'
 PROMPTS=("Give me one fun fact about APIs." "What is an AI gateway, in one sentence?" "Name one benefit of OAuth2 client credentials." "Explain rate limiting in ten words.")
 
 total=0; ok=0; rejected=0; other=0

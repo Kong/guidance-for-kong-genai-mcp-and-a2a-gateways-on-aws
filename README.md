@@ -17,6 +17,7 @@ You're probably already building GenAI on AWS with Bedrock models, AgentCore-hos
    - [Step 5: Require Kong Identity tokens on the agent and tools](#step-5-require-kong-identity-tokens-on-the-agent-and-tools)
    - [Step 6: Add the LLM Gateway to Amazon Bedrock](#step-6-add-the-llm-gateway-to-amazon-bedrock)
    - [Step 7: Connect the agent to the model and tools](#step-7-connect-the-agent-to-the-model-and-tools)
+   - [Step 8: Rate limit the agent](#step-8-rate-limit-the-agent)
 7. [Test and demo](#test-and-demo)
 8. [Clean up](#clean-up)
 9. [Repo layout](#repo-layout)
@@ -73,7 +74,7 @@ Deeper dives on each flow:
 
 ## What you'll build
 
-When you finish Steps 1–7 you'll have:
+When you finish Steps 1–8 you'll have:
 
 - An **EKS cluster** with the AWS Load Balancer Controller and EKS Pod Identity.
 - A **Konnect AI Gateway** (`kong-aws-ai`) and its **data plane** on EKS, with AWS access through an **IAM role** rather than keys.
@@ -83,6 +84,7 @@ When you finish Steps 1–7 you'll have:
 - A **Kong Identity** OAuth2 authorization server and an **Auth Strategy**, so every route needs a valid, short-lived token (Step 5).
 - An **LLM Gateway to Amazon Bedrock**: a **Model** at `/v1` that answers OpenAI-style requests with Amazon Nova Micro, with token, latency and cost analytics in Konnect (Step 6).
 - A **connected agent**: the stub is replaced by an agent that answers inventory questions by calling the model at `/v1` and the MCP tools at `/mcp`, every hop through Kong with its own token (Step 7).
+- A **rate limit** on the agent: an AI Policy that lets 5 requests a minute through `/a2a` and answers the rest with `429` (Step 8).
 
 > **What this guide does *not* configure yet.** The architecture includes Bedrock Guardrails, MemoryDB for semantic caching, Secrets Manager for credentials and CloudWatch for Kong metrics. The IAM policy in Step 2 already grants the Guardrails and Secrets Manager permissions. This guide has **no deployment steps** for these pieces yet.
 
@@ -99,7 +101,7 @@ You don't need deep Kubernetes knowledge. Every Kubernetes command is copy-paste
 | **Cloud architect** | [Why Kong on AWS](docs/why-kong-on-aws.md), [Architecture](#architecture) | [docs/concepts/](docs/concepts/) for the LLM, MCP and A2A flows |
 | **Security lead** | Step 2's IAM policy and Pod Identity section, [Step 5](5-kong-identity-oauth2.md) (OAuth2 tokens and introspection) | The "who owns what" table in [docs/why-kong-on-aws.md](docs/why-kong-on-aws.md#who-owns-what) |
 | **FinOps / IT lead** | [What you'll build](#what-youll-build), [Step 6](6-llm-gateway-bedrock.md) (token usage and cost in Konnect) | [Clean up](#clean-up) |
-| **Platform engineer** | [Prerequisites](#prerequisites), then Steps 1–6 in order | [docs/troubleshooting.md](docs/troubleshooting.md) |
+| **Platform engineer** | [Prerequisites](#prerequisites), then Steps 1–8 in order | [docs/troubleshooting.md](docs/troubleshooting.md) |
 
 Terms like MCP, A2A, data plane and AgentCore are defined in the [glossary](docs/glossary.md).
 
@@ -292,9 +294,9 @@ Run everything in **one terminal session**, from the root of this repo. Later st
 
 **Why this step.** Agents call tools over MCP. Routing those calls through Kong gives tool access the same authentication, limits and telemetry as model and agent traffic, instead of every agent holding credentials for every tool. Most teams already have REST APIs, and Kong can expose them as MCP tools without anyone writing an MCP server.
 
-**What it does.** Runs a small echo API (go-httpbin) inside the cluster, then declares an **MCP Server** at `/mcp` that turns two REST endpoints into two MCP tools, `check-inventory` and `list-orders`. You then initialize a session, list the tools and call one, the way an agent would.
+**What it does.** Runs a small echo API (go-httpbin) inside the cluster, then declares an **MCP Server** at `/mcp` that turns two REST endpoints into two MCP tools, `check_inventory` and `list_orders`. You then initialize a session, list the tools and call one, the way an agent would.
 
-**Verify.** Listing the tools returns `check-inventory` and `list-orders`, and calling `check-inventory` returns the echo of the REST request Kong made (`/anything/inventory?sku=KONG-123`).
+**Verify.** Listing the tools returns `check_inventory` and `list_orders`, and calling `check_inventory` returns the echo of the REST request Kong made (`/anything/inventory?sku=KONG-123`).
 
 **Common problems.** The tool call uses `sku` instead of `query_sku`. The MCP calls are rejected because of the session ID (re-run the initialize step). See [Step 4 troubleshooting](docs/troubleshooting.md#step-4-mcp-tools).
 
@@ -334,6 +336,18 @@ Run everything in **one terminal session**, from the root of this repo. Later st
 
 **Common problems.** Wrong client credentials in the agent's environment variables (a `401` in the agent's log). The old Step 3 lockfile blocking the deploy. See [Common problems](7-connect-agent-model-tools.md#common-problems) in Step 7.
 
+### Step 8: Rate limit the agent
+
+**Full doc:** [8-rate-limit.md](8-rate-limit.md)
+
+**Why this step.** After Step 7, one agent call can turn into several model and tool calls, each spending Bedrock tokens. A rate limit at the gateway stops runaway clients at Kong, before they reach AgentCore or Bedrock, without changing the agent.
+
+**What it does.** Declares a `rate-limiting` **AI Policy** (5 requests a minute) and attaches it to the agent at `/a2a`. Then sends 6 requests in a row.
+
+**Verify.** The first 5 return `200`, and the 6th returns `429 Too Many Requests` from Kong with `RateLimit-Remaining: 0`. A minute later, calls succeed again.
+
+**Common problems.** Earlier requests in the same minute count toward the limit. Konnect needs about 10 seconds to push the policy. See [Common problems](8-rate-limit.md#common-problems) in Step 8.
+
 ## Test and demo
 
 Once Steps 1–6 are done, [`scripts/verify.sh`](scripts/verify.sh) checks the whole setup in one command: the gateway answers; `/a2a`, `/mcp` and `/v1` reject missing and bad tokens; and with a valid token the agent answers, the MCP tools work and the model replies.
@@ -343,7 +357,7 @@ export AWS_DOMAIN=<your domain> ISSUER_URL=<issuer URL> CLIENT_ID=<client ID> CL
 ./scripts/verify.sh
 ```
 
-To give the Konnect dashboards something to show, [`scripts/traffic.sh`](scripts/traffic.sh) sends a steady mix of accepted and rejected requests to all three (same variables, plus `ROUNDS`). It's demo traffic, not a test.
+To give the Konnect dashboards something to show, [`scripts/traffic.sh`](scripts/traffic.sh) sends a steady mix of accepted and rejected requests to all three (same variables, plus `ROUNDS`). It's demo traffic, not a test. After Step 8, some of its `/a2a` requests get `429` from the rate limit, which is expected and shows up in the dashboards too.
 
 [docs/demo.md](docs/demo.md) explains each check and gives a five-minute walk-through for showing the setup to someone else.
 
@@ -374,8 +388,9 @@ Check the Billing console a day later to confirm nothing is still running.
 ├── 5-kong-identity-oauth2.md              # Step 5: Kong Identity tokens; Auth Strategy on the agent and MCP server
 ├── 6-llm-gateway-bedrock.md               # Step 6: Bedrock Model Provider and Nova Micro Model; usage in Konnect
 ├── 7-connect-agent-model-tools.md         # Step 7: an agent that uses the model and MCP tools, every hop through Kong
+├── 8-rate-limit.md                        # Step 8: a rate-limiting AI Policy on the agent
 ├── code/a2a/                              # Step 3 sample agents and Python setup; Step 7 inventory agent
-├── code/ai-gateway/                       # Kubernetes manifests (Step 2) and one kongctl file per step (Steps 3–7)
+├── code/ai-gateway/                       # Kubernetes manifests (Step 2) and one kongctl file per step (Steps 3–8)
 ├── code/inventory/                        # Step 7 in-cluster inventory API
 ├── scripts/
 │   ├── verify.sh                          # end-to-end check of /a2a, /mcp and /v1

@@ -1,0 +1,58 @@
+# Step 8: rate limit the agent at /a2a to 5 requests a minute.
+# Declares a rate-limiting AI Policy and re-declares the Step 5 agent with it attached.
+# Needs the same variables as Step 5: ISSUER_URL, INTROSPECTION_URL, CLIENT_ID,
+# CLIENT_SECRET, CACHE_TOKENS_SALT and AGENTCORE_URL.
+ai_gateway_policies:
+  - ref: a2a-rate-limit
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: a2a-rate-limit
+    display_name: A2A rate limit (5 per minute)
+    type: rate-limiting
+    enabled: true
+    config:
+      minute: 5          # deliberately low so it's easy to trigger
+      limit_by: ip
+      policy: local      # counted in the data plane's memory; fine for one replica
+
+ai_gateway_auth_strategies:
+  - ref: kong-identity-oidc
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: kong-identity-oidc
+    display_name: Kong Identity (OAuth2 introspection)
+    type: openid-connect
+    config:
+      issuer: !env ISSUER_URL
+      client_id:
+        - !env CLIENT_ID
+      client_secret:
+        - !secret {source: !env CLIENT_SECRET}
+      auth_methods:
+        - introspection
+      introspection_endpoint: !env INTROSPECTION_URL
+      ssl_verify: true
+      cache_tokens_salt: !env CACHE_TOKENS_SALT
+
+ai_gateway_agents:
+  - ref: agentcore-hello
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: agentcore-hello
+    display_name: AgentCore Hello World Agent
+    type: a2a
+    enabled: true
+    access:
+      auth_strategies:
+        - !ref kong-identity-oidc
+    policies:
+      - !ref a2a-rate-limit#name
+    config:
+      url: !env AGENTCORE_URL
+      route:
+        paths:
+          - /a2a
+        strip_path: true
+      upstream:
+        auth:
+          type: aws        # SigV4, with the data plane's Pod Identity credentials
+          region: us-west-2
+      logging:
+        payloads: true

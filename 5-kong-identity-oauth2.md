@@ -249,7 +249,7 @@ echo "--- valid token:"
 curl -s -D mcp-headers.txt -X POST https://ai-dp.$AWS_DOMAIN/mcp "${MCP_HDRS[@]}" -H "Authorization: Bearer $TOKEN" --data "$MCP_INIT"
 SID=$(grep -i '^mcp-session-id:' mcp-headers.txt | awk '{print $2}' | tr -d '\r')
 curl -s -X POST https://ai-dp.$AWS_DOMAIN/mcp "${MCP_HDRS[@]}" -H "Authorization: Bearer $TOKEN" -H "Mcp-Session-Id: $SID" \
-  --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-123"}}}'
+  --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check_inventory","arguments":{"query_sku":"KONG-123"}}}'
 ```
 
 Without a token: `401`. With one: the initialize result, then the tool's echo with `"isError":false`.

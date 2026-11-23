@@ -30,7 +30,7 @@ CLIENT_SECRET = os.environ["CLIENT_SECRET"]
 
 SYSTEM_PROMPT = """
 You are the inventory assistant for a small online store.
-Use the check-inventory tool to look up stock for a SKU, and the list-orders tool to see orders.
+Use the check_inventory tool to look up stock for a SKU, and the list_orders tool to see orders.
 Always call a tool before answering a question about stock or orders. Never guess numbers.
 Answer in one or two short sentences.
 """
@@ -68,7 +68,8 @@ def create_agent(context_id: str) -> Agent:
     model = OpenAIModel(
         client_args={"api_key": token, "base_url": f"{KONG_URL}/v1"},
         model_id="nova-micro",
-        params={"max_tokens": 500, "temperature": 0.2},
+        # Nova calls tools most reliably with temperature 0 (see the Nova tool-use troubleshooting guide).
+        params={"max_tokens": 1000, "temperature": 0},
     )
 
     # The tools: Kong's MCP endpoint, with the same token.

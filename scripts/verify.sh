@@ -102,13 +102,13 @@ t_mcp_list() {
   local out
   out=$(kc -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" -H "Authorization: Bearer ${TOKEN}" -H "Mcp-Session-Id: ${SID}" \
     --data '{"jsonrpc":"2.0","id":2,"method":"tools/list"}')
-  echo "$out" | grep -q "check-inventory" && echo "$out" | grep -q "list-orders"
+  echo "$out" | grep -q "check_inventory" && echo "$out" | grep -q "list_orders"
 }
 
 t_mcp_call() {
   local out
   out=$(kc -X POST "https://${HOST}/mcp" "${MCP_HDRS[@]}" -H "Authorization: Bearer ${TOKEN}" -H "Mcp-Session-Id: ${SID}" \
-    --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check-inventory","arguments":{"query_sku":"KONG-123"}}}')
+    --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"check_inventory","arguments":{"query_sku":"KONG-123"}}}')
   echo "$out" | grep -q "KONG-123" && ! echo "$out" | grep -q '"isError":true'
 }
 
@@ -146,7 +146,7 @@ if [ "$MCP_AUTH" != "0" ]; then
   check "/mcp without a token is rejected" t_mcp_no_token
 fi
 check "/mcp initialize returns server info" t_mcp_initialize
-check "/mcp lists check-inventory and list-orders" t_mcp_list
+check "/mcp lists check_inventory and list_orders" t_mcp_list
 check "/mcp tool call reaches the REST backend" t_mcp_call
 if [ -n "$MODEL" ]; then
   check "/v1 model ${MODEL} without a token is rejected" t_model_no_token
