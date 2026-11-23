@@ -1,0 +1,103 @@
+# Step 7: a small inventory API for the MCP tools to call.
+# It replaces Step 4's echo backend with believable stock and order data, so the
+# agent's answers show the tool was really used. In-cluster only, no public endpoint.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: inventory-api
+  namespace: kong
+data:
+  server.py: |
+    import json
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import urlparse, parse_qs
+
+    STOCK = {
+        "KONG-123": {"name": "Kong hoodie", "in_stock": 42, "warehouse": "Portland"},
+        "KONG-456": {"name": "Kong sticker pack", "in_stock": 0, "restock_date": "2026-12-15"},
+        "AWS-789": {"name": "AWS coffee mug", "in_stock": 7, "warehouse": "Seattle"},
+    }
+
+    ORDERS = [
+        {"order_id": "ORD-1001", "sku": "KONG-123", "quantity": 2, "status": "shipped"},
+        {"order_id": "ORD-1002", "sku": "AWS-789", "quantity": 1, "status": "pending"},
+        {"order_id": "ORD-1003", "sku": "KONG-456", "quantity": 5, "status": "backordered"},
+        {"order_id": "ORD-1004", "sku": "KONG-123", "quantity": 1, "status": "pending"},
+    ]
+
+    class Handler(BaseHTTPRequestHandler):
+        def send_json(self, status, body):
+            data = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            url = urlparse(self.path)
+            query = parse_qs(url.query)
+            if url.path == "/inventory":
+                sku = (query.get("sku") or [""])[0].upper()
+                if sku in STOCK:
+                    self.send_json(200, {"sku": sku, **STOCK[sku]})
+                else:
+                    self.send_json(404, {"error": f"unknown sku {sku}", "known_skus": list(STOCK)})
+            elif url.path == "/orders":
+                status = (query.get("status") or [""])[0].lower()
+                orders = [o for o in ORDERS if not status or o["status"] == status]
+                self.send_json(200, {"orders": orders, "count": len(orders)})
+            elif url.path == "/healthz":
+                self.send_json(200, {"ok": True})
+            else:
+                self.send_json(404, {"error": "not found"})
+
+        def log_message(self, fmt, *args):
+            print("inventory-api:", fmt % args, flush=True)
+
+    ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-api
+  namespace: kong
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-api
+  template:
+    metadata:
+      labels:
+        app: inventory-api
+    spec:
+      containers:
+        - name: inventory-api
+          image: public.ecr.aws/docker/library/python:3.13-alpine
+          command: ["python", "-u", "/app/server.py"]
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          volumeMounts:
+            - name: code
+              mountPath: /app
+      volumes:
+        - name: code
+          configMap:
+            name: inventory-api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: inventory-api
+  namespace: kong
+spec:
+  selector:
+    app: inventory-api
+  ports:
+    - port: 8080
+      targetPort: 8080

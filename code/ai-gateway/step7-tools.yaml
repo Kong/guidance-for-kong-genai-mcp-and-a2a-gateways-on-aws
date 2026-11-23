@@ -1,0 +1,63 @@
+# Step 7: point the Step 4 MCP tools at the in-cluster inventory API instead of the echo backend.
+# Re-declares the Step 5 auth strategy so the MCP server keeps requiring a token. Needs the same
+# Kong Identity variables as Steps 5 and 6 (ISSUER_URL, INTROSPECTION_URL, CLIENT_ID,
+# CLIENT_SECRET, CACHE_TOKENS_SALT).
+ai_gateway_auth_strategies:
+  - ref: kong-identity-oidc
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: kong-identity-oidc
+    display_name: Kong Identity (OAuth2 introspection)
+    type: openid-connect
+    config:
+      issuer: !env ISSUER_URL
+      client_id:
+        - !env CLIENT_ID
+      client_secret:
+        - !secret {source: !env CLIENT_SECRET}
+      auth_methods:
+        - introspection
+      introspection_endpoint: !env INTROSPECTION_URL
+      ssl_verify: true
+      cache_tokens_salt: !env CACHE_TOKENS_SALT
+
+ai_gateway_mcp_servers:
+  - ref: inventory-tools
+    ai_gateway: !lookup {name: kong-aws-ai}
+    name: inventory-tools
+    display_name: Inventory and Orders Tools
+    type: conversion-listener
+    enabled: true
+    access:
+      acl_attribute_type: consumer
+      auth_strategies:
+        - !ref kong-identity-oidc#name   # MCP servers list strategies by name
+    config:
+      url: http://inventory-api.kong.svc.cluster.local:8080   # was the httpbin echo API in Step 4
+      route:
+        paths:
+          - /mcp
+      server:
+        timeout: 60000
+    tools:
+      - name: check-inventory
+        description: Check how many units of a product are in stock, by SKU.
+        method: GET
+        path: /mcp/inventory
+        parameters:
+          - name: sku
+            in: query
+            required: true
+            description: The product SKU to look up.
+            schema:
+              type: string
+      - name: list-orders
+        description: List recent orders, optionally filtered by status.
+        method: GET
+        path: /mcp/orders
+        parameters:
+          - name: status
+            in: query
+            required: false
+            description: Only return orders with this status, for example shipped.
+            schema:
+              type: string

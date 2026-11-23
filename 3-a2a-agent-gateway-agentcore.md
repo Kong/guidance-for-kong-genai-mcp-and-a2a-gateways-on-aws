@@ -665,6 +665,8 @@ You should see `[ai-a2a-proxy] Creating aws_iam auth handler`.
 
 > **Checkpoint: the agent works through the AI Gateway.** A plain `curl` to `https://ai-dp.$AWS_DOMAIN/a2a` returns the same artifact as the signed `awscurl` call. Kong signed the call to AgentCore with its Pod Identity role.
 
+> **Why the same answer every time?** This agent is a stub: it returns `that's the response` whatever you send, and it doesn't call a model or any tools. This step is about the path through Kong to AgentCore. [Step 7](7-connect-agent-model-tools.md) replaces it with an agent that uses the Step 6 model and the Step 4 tools, all through Kong.
+
 ## A second agent
 
 [`code/a2a/client_1.py`](code/a2a/client_1.py) is a small A2A client that resolves the Agent Card through the gateway and lets you chat with the agent. Set it up as "Agent 2" in [python-a2a-sdk-install.md](code/a2a/python-a2a-sdk-install.md) and point `base_url` at `https://ai-dp.<your domain>/a2a`. It hasn't been tested against the AI Gateway yet, and after Step 5 it would also need to send an `Authorization: Bearer` header.

@@ -1,6 +1,6 @@
 # Step 6: Add the LLM Gateway to Amazon Bedrock
 
-[← Step 5](5-kong-identity-oauth2.md) · **Step 6** · [README →](README.md)
+[← Step 5](5-kong-identity-oauth2.md) · **Step 6** · [Step 7 →](7-connect-agent-model-tools.md)
 
 ## Why this step
 
@@ -145,4 +145,4 @@ For the full picture, open **Observability → Overview**. It shows the exact co
 
 Deleting the AI Gateway ([docs/teardown.md](docs/teardown.md), section 1) removes the provider and the model. The rest of that page removes everything else the guide creates.
 
-[← Step 5](5-kong-identity-oauth2.md) · **Step 6** · [README →](README.md)
+[← Step 5](5-kong-identity-oauth2.md) · **Step 6** · [Step 7 →](7-connect-agent-model-tools.md)

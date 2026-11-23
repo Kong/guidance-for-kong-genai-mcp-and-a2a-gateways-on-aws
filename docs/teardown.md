@@ -8,12 +8,13 @@ This page removes everything the guide creates, in an order that avoids leftover
 >
 > **Every block sets what it needs**, so it works in any terminal, including a new one. The region is written out as `us-west-2`. If you used another domain than in the examples, or another suffix for IAM names, change it where the block says so.
 
-## 1. AI Gateway, data plane and echo backend (Steps 2 and 4)
+## 1. AI Gateway, data plane, echo backend and inventory API (Steps 2, 4 and 7)
 
 Delete the data plane first (this also deletes its NLB), then the AI Gateway. The Kong Operator removes the gateway from Konnect when its resource is deleted, together with its agent, MCP server, model, provider and auth strategy. Do this while the operator is still running.
 
 ```bash
 kubectl -n kong delete service,deployment httpbin --ignore-not-found
+kubectl delete -f code/inventory/inventory-api.yaml --ignore-not-found
 kubectl delete aigatewaydataplane kong-aws-ai-dp -n kong --wait=true
 kubectl delete konnectaigateway kong-aws-ai -n kong --wait=true
 kubectl delete konnectapiauthconfiguration konnect-api-auth-conf -n kong

@@ -16,6 +16,7 @@ You're probably already building GenAI on AWS with Bedrock models, AgentCore-hos
    - [Step 4: Turn a REST API into MCP tools on the AI Gateway](#step-4-turn-a-rest-api-into-mcp-tools-on-the-ai-gateway)
    - [Step 5: Require Kong Identity tokens on the agent and tools](#step-5-require-kong-identity-tokens-on-the-agent-and-tools)
    - [Step 6: Add the LLM Gateway to Amazon Bedrock](#step-6-add-the-llm-gateway-to-amazon-bedrock)
+   - [Step 7: Connect the agent to the model and tools](#step-7-connect-the-agent-to-the-model-and-tools)
 7. [Test and demo](#test-and-demo)
 8. [Clean up](#clean-up)
 9. [Repo layout](#repo-layout)
@@ -72,7 +73,7 @@ Deeper dives on each flow:
 
 ## What you'll build
 
-When you finish Steps 1–6 you'll have:
+When you finish Steps 1–7 you'll have:
 
 - An **EKS cluster** with the AWS Load Balancer Controller and EKS Pod Identity.
 - A **Konnect AI Gateway** (`kong-aws-ai`) and its **data plane** on EKS, with AWS access through an **IAM role** rather than keys.
@@ -81,6 +82,7 @@ When you finish Steps 1–6 you'll have:
 - An **MCP Server** at `/mcp`, turning a REST API into two MCP tools that any MCP client can list and call (Step 4).
 - A **Kong Identity** OAuth2 authorization server and an **Auth Strategy**, so every route needs a valid, short-lived token (Step 5).
 - An **LLM Gateway to Amazon Bedrock**: a **Model** at `/v1` that answers OpenAI-style requests with Amazon Nova Micro, with token, latency and cost analytics in Konnect (Step 6).
+- A **connected agent**: the stub is replaced by an agent that answers inventory questions by calling the model at `/v1` and the MCP tools at `/mcp`, every hop through Kong with its own token (Step 7).
 
 > **What this guide does *not* configure yet.** The architecture includes Bedrock Guardrails, MemoryDB for semantic caching, Secrets Manager for credentials and CloudWatch for Kong metrics. The IAM policy in Step 2 already grants the Guardrails and Secrets Manager permissions. This guide has **no deployment steps** for these pieces yet.
 
@@ -320,6 +322,18 @@ Run everything in **one terminal session**, from the root of this repo. Later st
 
 **Common problems.** Your account doesn't have access to Nova Micro. The request uses the Bedrock model ID instead of `nova-micro`. See [Step 6 troubleshooting](docs/troubleshooting.md#step-6-llm-gateway-to-bedrock).
 
+### Step 7: Connect the agent to the model and tools
+
+**Full doc:** [7-connect-agent-model-tools.md](7-connect-agent-model-tools.md)
+
+**Why this step.** Steps 3, 4 and 6 are three separate front doors, and the Step 3 agent is a stub that never calls the model or the tools. Real agents use both in one request. This step shows that flow, with every hop going through Kong.
+
+**What it does.** Runs a small inventory API in the cluster and points the Step 4 MCP tools at it. Replaces the stub agent on AgentCore with a Strands agent that calls `nova-micro` at `/v1` and the inventory tools at `/mcp`, both through Kong with a Kong Identity token. Then asks it a question through `/a2a`.
+
+**Verify.** Asking "Is KONG-456 in stock? And how many orders are pending?" through `/a2a` returns the restock date and pending order count from the inventory API, and the data plane log shows `/a2a`, `/v1` and `/mcp` requests for that one question.
+
+**Common problems.** Wrong client credentials in the agent's environment variables (a `401` in the agent's log). The old Step 3 lockfile blocking the deploy. See [Common problems](7-connect-agent-model-tools.md#common-problems) in Step 7.
+
 ## Test and demo
 
 Once Steps 1–6 are done, [`scripts/verify.sh`](scripts/verify.sh) checks the whole setup in one command: the gateway answers; `/a2a`, `/mcp` and `/v1` reject missing and bad tokens; and with a valid token the agent answers, the MCP tools work and the model replies.
@@ -339,7 +353,7 @@ Stop billing by removing what you created. **[docs/teardown.md](docs/teardown.md
 
 In short, roughly in reverse order:
 - **The AI Gateway** and its data plane (Step 2), which also deletes the NLB and everything declared on the gateway, plus the `ai-dp.<your domain>` record.
-- **The Kong Operator** and the echo backend (Steps 2 and 4).
+- **The Kong Operator**, the echo backend and the inventory API (Steps 2, 4 and 7).
 - **Kong Identity** (Step 5): the `AuthZ_Server_1` authorization server.
 - **The AgentCore runtime** and its CloudFormation stack (Step 3).
 - **The AWS Load Balancer Controller and the EKS cluster** `kong314` (Step 1), the largest ongoing charges.
@@ -359,8 +373,10 @@ Check the Billing console a day later to confirm nothing is still running.
 ├── 4-mcp-gateway.md                       # Step 4: MCP flow explained; in-cluster REST API exposed as MCP tools
 ├── 5-kong-identity-oauth2.md              # Step 5: Kong Identity tokens; Auth Strategy on the agent and MCP server
 ├── 6-llm-gateway-bedrock.md               # Step 6: Bedrock Model Provider and Nova Micro Model; usage in Konnect
-├── code/a2a/                              # Step 3 sample agents and Python setup (server_1.py, client_1.py)
-├── code/ai-gateway/                       # Kubernetes manifests (Step 2) and one kongctl file per step (Steps 3–6)
+├── 7-connect-agent-model-tools.md         # Step 7: an agent that uses the model and MCP tools, every hop through Kong
+├── code/a2a/                              # Step 3 sample agents and Python setup; Step 7 inventory agent
+├── code/ai-gateway/                       # Kubernetes manifests (Step 2) and one kongctl file per step (Steps 3–7)
+├── code/inventory/                        # Step 7 in-cluster inventory API
 ├── scripts/
 │   ├── verify.sh                          # end-to-end check of /a2a, /mcp and /v1
 │   └── traffic.sh                         # demo traffic for the Konnect dashboards

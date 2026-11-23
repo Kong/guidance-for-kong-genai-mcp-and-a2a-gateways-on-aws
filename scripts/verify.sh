@@ -85,7 +85,7 @@ t_a2a_bad_token() {
 }
 
 t_a2a_good_token() {
-  kc -X POST "https://${HOST}/a2a" -H "Authorization: Bearer ${TOKEN}" --json "$A2A_BODY" | grep -q "that's the response"
+  kc -X POST "https://${HOST}/a2a" -H "Authorization: Bearer ${TOKEN}" --json "$A2A_BODY" | grep -q '"artifacts"'
 }
 
 t_mcp_initialize() {
