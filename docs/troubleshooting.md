@@ -11,6 +11,82 @@ Back to the [README](../README.md).
 
 ## Step 1: EKS and networking
 
+### `eksctl create cluster` stopped partway
+
+`eksctl create cluster` runs for 15 to 20 minutes. If it's cut off (expired AWS credentials, a laptop going to sleep, a dropped connection), it can leave the cluster half built: the cluster exists, but the networking add-ons or the node group are missing. A typical sign is `ExpiredToken` in the output, or a node that stays `NotReady`.
+
+Don't re-run `eksctl create cluster`. It refuses because the cluster already exists. Instead, fill in what's missing.
+
+First, sign in again and confirm your session works. If you see `ExpiredToken`, clear any keys left in your shell first (see [Check your setup](../README.md#check-your-setup), step 2).
+
+```bash
+aws sts get-caller-identity
+```
+
+See which CloudFormation stacks were created:
+
+```bash
+aws cloudformation describe-stacks --region us-west-2 --query "Stacks[?starts_with(StackName,'eksctl-kong314')].[StackName,StackStatus]" --output table
+```
+
+If `eksctl-kong314-cluster` isn't `CREATE_COMPLETE`, it's simplest to start over. Delete the cluster, then run Step 1's `eksctl create cluster` command again:
+
+```bash
+eksctl delete cluster --region us-west-2 --name kong314 --wait
+```
+
+If `eksctl-kong314-cluster` is `CREATE_COMPLETE`, connect kubectl to it:
+
+```bash
+eksctl utils write-kubeconfig --cluster kong314 --region us-west-2
+```
+
+List the cluster's add-ons. You need `vpc-cni`, `kube-proxy` and `coredns`. Without `vpc-cni`, nodes stay `NotReady`.
+
+```bash
+aws eks list-addons --cluster-name kong314 --region us-west-2
+```
+
+Install any that are missing. Run only the lines you need:
+
+```bash
+eksctl create addon --cluster kong314 --region us-west-2 --name vpc-cni
+```
+
+```bash
+eksctl create addon --cluster kong314 --region us-west-2 --name kube-proxy
+```
+
+```bash
+eksctl create addon --cluster kong314 --region us-west-2 --name coredns
+```
+
+Check the node group:
+
+```bash
+aws eks describe-nodegroup --cluster-name kong314 --nodegroup-name kong-node --region us-west-2 --query nodegroup.status --output text
+```
+
+- `ACTIVE`: nothing more to do.
+- `CREATING`: wait a few minutes and check again.
+- `CREATE_FAILED` or `DEGRADED`: delete it, then create it again with the add-ons in place.
+
+```bash
+eksctl delete nodegroup --cluster kong314 --region us-west-2 --name kong-node --wait
+```
+
+- `ResourceNotFoundException`, or you just deleted it: create the node group.
+
+```bash
+eksctl create nodegroup --cluster kong314 --region us-west-2 --name kong-node --node-type c5.xlarge --nodes 1
+```
+
+You're back on track when this lists one node as `Ready`. Then continue Step 1 from **Pod Identity**.
+
+```bash
+kubectl get nodes
+```
+
 ### Helm cannot find the eks chart repository
 
 Run `helm repo add eks https://aws.github.io/eks-charts` and `helm repo update eks`, then re-run the `helm install` command.

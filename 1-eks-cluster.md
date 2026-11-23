@@ -51,6 +51,16 @@ eksctl create cluster --name kong314 --version 1.35 --region us-west-2 --nodegro
 
 Please check all [AWS Instances Types available](https://aws.amazon.com/ec2/instance-types/). Also, check the command accordingly if you want to create your cluster in a different region or name it differently.
 
+It takes 15 to 20 minutes and ends with `EKS cluster "kong314" in "us-west-2" region is ready`.
+
+> **Checkpoint.** Before you go on, confirm the node is up:
+>
+> ```bash
+> kubectl get nodes
+> ```
+>
+> It should list one node with status `Ready`. If the command ended with an error instead (for example `ExpiredToken`), or the node shows `NotReady` for more than a few minutes, the cluster was only partly created. Follow [`eksctl create cluster` stopped partway](docs/troubleshooting.md#eksctl-create-cluster-stopped-partway) before going further.
+
 #### Pod Identity
 
 The **EKS Pod Identity AddOn** allows the **AWS Load Balancer Controller** to provision new Load Balancers
@@ -282,6 +292,7 @@ Keep this terminal open. Step 2 uses the `AWS_DOMAIN`, `CERTIFICATE_ARN` and `HO
 ## Common problems
 
 - **The certificate stays `PENDING_VALIDATION`.** ACM can't see the CNAME yet. Check that the domain registration operation has finished (the `get-operation-detail` command), that the CNAME was created in the right hosted zone, and that the domain is delegated to that zone (the `dig NS` check under [Using a domain you already have](#using-a-domain-you-already-have)). `dig +short CNAME $RESOURCE_RECORD_NAME @8.8.8.8` must return the validation value.
+- **`eksctl create cluster` stopped with an error, or the node stays `NotReady`.** The cluster was only partly created, often because AWS credentials expired during the run. See [`eksctl create cluster` stopped partway](docs/troubleshooting.md#eksctl-create-cluster-stopped-partway).
 - **`helm install` says it can't find the `eks` repository.** Run the `helm repo add eks ...` command above first.
 - **`create-policy` fails with `EntityAlreadyExists`.** The policy name is taken in this account. Use a different suffix (see the note at the top).
 - **Route 53 domain commands fail in `us-west-2`.** The Route 53 Domains API is only available in `us-east-1`, which is why those commands pass `--region us-east-1`, while ACM and EKS use `us-west-2`.
