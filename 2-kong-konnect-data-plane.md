@@ -202,7 +202,15 @@ aws route53 change-resource-record-sets --hosted-zone-id $HOSTED_ZONE_ID --chang
 
 ## Test the load balancer
 
+A new NLB takes 1 to 3 minutes to pass its health checks after the record is created. Until it does, curl gets `Empty reply from server`, which is normal at this point. This retries every 10 seconds until Kong answers:
+
+```bash
+until curl -s -o /dev/null -w "%{http_code}" https://ai-dp.$AWS_DOMAIN/ | grep -q 404; do echo "Waiting for the NLB..."; sleep 10; done; echo "Kong is answering"
 ```
+
+Then look at the full response:
+
+```bash
 curl -i https://ai-dp.$AWS_DOMAIN/
 ```
 
@@ -210,17 +218,47 @@ curl -i https://ai-dp.$AWS_DOMAIN/
 HTTP/1.1 404 Not Found
 Content-Type: application/json; charset=utf-8
 Content-Length: 103
+Server: kong/2.3.1-ai-gateway
 ...
+{
+  "message":"no Route matched with those values",
+  ...
+}
 ```
 
-A new DNS name and a new NLB both take a few minutes to settle:
+This `404` is the result you want. `Server: kong/...` shows the request reached Kong, and `no Route matched` is expected because nothing is declared on the gateway yet.
+
+To see each stage of the connection, use `-v` instead of `-i`. It shows the DNS lookup, the TLS handshake with your `*.<your domain>` certificate, and then Kong's response:
+
+```bash
+curl -v https://ai-dp.$AWS_DOMAIN/
+```
+
+If the wait loop runs for more than 5 minutes:
+
 - **`Could not resolve host`.** Your machine's resolver hasn't picked up the new name yet, even if public DNS has. Check with `dig +short ai-dp.$AWS_DOMAIN @8.8.8.8`. Until your resolver catches up, pin the address for curl:
-  ```
+
+  ```bash
   export KONG_IP=$(dig +short ai-dp.$AWS_DOMAIN @8.8.8.8 | head -1)
   curl -i --resolve ai-dp.$AWS_DOMAIN:443:$KONG_IP https://ai-dp.$AWS_DOMAIN/
   ```
+
   Add the same `--resolve` option to the `curl` commands in later steps. The repo's scripts do this for you.
-- **`Empty reply from server`.** The NLB accepted the connection but has no healthy target in that zone yet. Wait for the target group to report `healthy` (EC2 console, **Target groups**), then resolve the name again and retry. With one data plane pod and cross-zone load balancing off, NLB addresses in zones without a pod can keep dropping connections, so re-resolve until you get a working address, or run more replicas.
+
+- **`Empty reply from server`.** The NLB accepted the connection, and TLS worked, but it has no healthy Kong pod behind that address. Check that the pod is `1/1 Running`:
+
+  ```bash
+  kubectl get pods -n kong
+  ```
+
+  Then check the NLB's targets. Every line should say `healthy`:
+
+  ```bash
+  LB_ARN=$(aws elbv2 describe-load-balancers --region us-west-2 --query "LoadBalancers[?DNSName=='$AI_LB'].LoadBalancerArn" --output text)
+  for tg in $(aws elbv2 describe-target-groups --load-balancer-arn $LB_ARN --region us-west-2 --query 'TargetGroups[].TargetGroupArn' --output text); do aws elbv2 describe-target-health --target-group-arn $tg --region us-west-2 --query 'TargetHealthDescriptions[].TargetHealth.State' --output text; done
+  ```
+
+  If the targets are `healthy` and curl still gets an empty reply, your machine may be reaching an NLB address in a zone without a Kong pod. With one data plane pod and cross-zone load balancing off, those addresses keep dropping connections. Try each address from `dig +short ai-dp.$AWS_DOMAIN @8.8.8.8` with the `--resolve` command above, or run more data plane replicas.
 
 ## kongctl
 
@@ -251,7 +289,7 @@ That 404 is the success signal. It proves DNS → NLB → TLS with your ACM cert
 - **The AI Gateway never becomes `Programmed`, or the data plane never appears in Konnect.** Check the operator's log: `kubectl logs -n kong-system deploy/kong-operator-kong-operator-controller-manager --tail=50`. A wrong or expired `PAT`, a Konnect region other than `us`, or an organization without AI Gateway are common causes.
 - **`AI_LB` is empty.** The NLB takes a few minutes to provision. Wait and re-run the export.
 - **HTTPS fails but HTTP works.** `CERTIFICATE_ARN` was probably not set when you applied the data plane, so the NLB has no certificate. Check with `kubectl get svc kong-aws-ai-dp-ingress -n kong -o yaml | grep ssl-cert`.
-- **`Could not resolve host` or `Empty reply from server`.** DNS or the NLB targets are still settling. See [Test the load balancer](#test-the-load-balancer).
+- **`Could not resolve host` or `Empty reply from server`.** DNS or the NLB targets are still settling, which is normal for the first few minutes. See [Test the load balancer](#test-the-load-balancer).
 - **More:** see [docs/troubleshooting.md](docs/troubleshooting.md#step-2-kong-ai-gateway-on-eks).
 
 ## Tearing this step down
