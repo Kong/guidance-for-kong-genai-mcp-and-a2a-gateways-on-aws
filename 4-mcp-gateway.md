@@ -29,7 +29,7 @@ Until Step 5 adds a token check, `/mcp` accepts calls from anyone who knows the 
 
 This diagram illustrates an AI-native architecture that combines AWS Bedrock AgentCore, Kong MCP Gateway, and MCP (Model Context Protocol) Servers to provide secure, observable, and governable access to tools and services for AI agents.
 
-![MCP-Flow](images/step4-mcp/01-mcp-flow.png)
+![MCP traffic through Kong AI Gateway: Agent1 on Amazon Bedrock AgentCore sends MCP requests through the Kong AI Gateway data plane on Amazon EKS to MCP servers on AgentCore, REST services exposed as MCP tools, and MCP servers outside AWS; Kong Konnect manages the gateway](images/step4-mcp/01-mcp-flow.svg)
 
 At a high level, the flow is divided into four major domains:
 

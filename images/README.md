@@ -20,8 +20,8 @@ These are the diagrams used by the [README](../README.md), the step docs and the
 | `architecture/05-all-flows.png` | LLM, MCP and A2A flows together | [concepts/all-flows.md](../docs/concepts/all-flows.md) |
 | `architecture/10-aws-only-vs-aws-plus-kong.svg` | An AWS-only GenAI stack next to AWS + Kong | README |
 | `architecture/11-life-of-a-request.svg` | Numbered path of one request, from client to AgentCore and back | README |
-| `step3-a2a/01-a2a-flow.png` | A2A flow through Kong's Agent Gateway | [Step 3](../3-a2a-agent-gateway-agentcore.md) |
-| `step4-mcp/01-mcp-flow.png` | MCP flow through Kong's MCP Gateway | [Step 4](../4-mcp-gateway.md) |
+| `step3-a2a/01-a2a-flow.svg` | A2A flow through Kong's Agent Gateway | [Step 3](../3-a2a-agent-gateway-agentcore.md) |
+| `step4-mcp/01-mcp-flow.svg` | MCP flow through Kong's MCP Gateway | [Step 4](../4-mcp-gateway.md) |
 | `step3-a2a/02-konnect-agents.png` | Screenshot: the AgentCore agent on the AI Gateway's Agents page in Konnect | [Step 3](../3-a2a-agent-gateway-agentcore.md) |
 | `step4-mcp/02-konnect-mcp-servers.png` | Screenshot: the MCP server on the AI Gateway's MCP servers page in Konnect | [Step 4](../4-mcp-gateway.md) |
 | `step6-llm/01-konnect-gateway-overview.png` | Screenshot: the AI Gateway's Overview with model usage | [Step 6](../6-llm-gateway-bedrock.md) |

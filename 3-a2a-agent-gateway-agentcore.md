@@ -36,7 +36,7 @@ Until Step 5 adds a token check, `/a2a` accepts calls from anyone who knows the 
 
 This diagram illustrates a secure and observable Agent-to-Agent (A2A) communication architecture built using **AWS Bedrock AgentCore**, **Kong Agent Gateway**, and **Konnect** as the centralized control plane.
 
-![A2A-Flow](images/step3-a2a/01-a2a-flow.png)
+![A2A traffic through Kong AI Gateway: a user calls Agent1, which sends A2A requests through the Kong AI Gateway data plane on Amazon EKS to agents on Amazon Bedrock AgentCore; Kong Konnect manages the gateway and telemetry goes to an observability backend](images/step3-a2a/01-a2a-flow.svg)
 
 The design demonstrates how multiple AI agents can communicate with one another through standardized **A2A Protocol** and routes while Kong provides governance, authentication, telemetry, and operational control.
 
